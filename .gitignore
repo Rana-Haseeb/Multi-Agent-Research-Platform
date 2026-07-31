@@ -1,0 +1,59 @@
+# ---- Secrets (NEVER commit) ----
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+secrets.toml
+*.pem
+*.key
+credentials.json
+service-account*.json
+
+# ---- Local working notes / assistant state (not part of the deliverable) ----
+WEEK4_PROJECT_MEMORY.md
+.claude/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+.venv/
+venv/
+env/
+build/
+dist/
+.python-version
+
+# ---- Test / lint caches ----
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.ipynb_checkpoints/
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Local run artefacts ----
+*.log
+*.tmp
+tmp/
+.streamlit/cache/
+
+# NOTE: deliberately NOT ignored, because §36 requires them in the repo:
+#   docs/            generated specs and write-ups
+#   eval/            evaluation dataset and results
+#   experiments/     experiment results
+#   corpus/          the research corpus itself
+#   screenshots/
+#   scripts/probe_results.json   measured evidence behind the model choice
+#                                (rate limits, planning + critic probe scores)

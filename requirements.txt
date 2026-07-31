@@ -1,0 +1,24 @@
+# ---- Core ----
+python-dotenv>=1.0
+pydantic>=2.7
+
+# ---- Orchestration (LangGraph state machine + OpenAI-compatible chat models) ----
+langgraph>=0.2.60
+langchain-core>=0.3.25
+langchain-openai>=0.2.14
+
+# ---- Frontend ----
+# Pinned so Streamlit Cloud DOM matches local.
+streamlit==1.54.0
+
+# ---- Data layer: Postgres (evidence store) ----
+psycopg[binary]>=3.2
+
+# ---- Corpus retrieval ----
+# BM25 is pure Python and weighs ~nothing. Deliberately NOT sentence-transformers: that pulls
+# ~2GB of torch, which bloated the Week 3 Streamlit Cloud build. pgvector is added in Phase 2
+# only if a hosted embedding endpoint probes clean.
+rank-bm25>=0.2.2
+
+# ---- Testing ----
+pytest>=8.0

@@ -1,0 +1,20 @@
+# Pin a fixed base theme so the deployed app renders identically to local.
+# Without this, Streamlit Cloud may pick a different base theme than your machine,
+# which makes widgets (selectboxes, inputs) look wrong. The in-app Dark/Light
+# toggle layers custom CSS on top of this base.
+
+[theme]
+base = "dark"
+primaryColor = "#7c5cff"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#1c2230"
+textColor = "#e6e9ef"
+font = "sans serif"
+
+[server]
+headless = true
+# NOTE: Week 3 set `fileWatcherType = "none"` here because sentence-transformers pulled in
+# torch/transformers and Streamlit's watcher stalled scanning their lazy modules. The cost was
+# losing hot-reload — the server had to be restarted after every single edit.
+# Week 4 retrieves with BM25 and has no torch dependency, so the watcher stays ON and
+# hot-reload works normally. Do not re-add that line unless torch comes back.

@@ -1,0 +1,335 @@
+{
+  "groq": {
+    "base_url": "https://api.groq.com/openai/v1",
+    "models": [
+      {
+        "model": "openai/gpt-oss-120b",
+        "completion": {
+          "ok": true,
+          "seconds": 2.9,
+          "error": "",
+          "usage": {}
+        },
+        "structured": {
+          "ok": true,
+          "seconds": 0.86,
+          "error": ""
+        },
+        "tool_calling": {
+          "ok": true,
+          "seconds": 0.47,
+          "error": ""
+        },
+        "usable": true
+      },
+      {
+        "model": "openai/gpt-oss-20b",
+        "completion": {
+          "ok": true,
+          "seconds": 0.48,
+          "error": "",
+          "usage": {}
+        },
+        "structured": {
+          "ok": true,
+          "seconds": 0.73,
+          "error": ""
+        },
+        "tool_calling": {
+          "ok": true,
+          "seconds": 0.41,
+          "error": ""
+        },
+        "usable": true
+      },
+      {
+        "model": "llama-3.3-70b-versatile",
+        "completion": {
+          "ok": true,
+          "seconds": 0.14,
+          "error": "",
+          "usage": {}
+        },
+        "structured": {
+          "ok": true,
+          "seconds": 0.32,
+          "error": ""
+        },
+        "tool_calling": {
+          "ok": true,
+          "seconds": 0.13,
+          "error": ""
+        },
+        "usable": true
+      },
+      {
+        "model": "llama-3.1-8b-instant",
+        "completion": {
+          "ok": true,
+          "seconds": 0.11,
+          "error": "",
+          "usage": {}
+        },
+        "structured": {
+          "ok": true,
+          "seconds": 0.54,
+          "error": ""
+        },
+        "tool_calling": {
+          "ok": true,
+          "seconds": 0.13,
+          "error": ""
+        },
+        "usable": true
+      },
+      {
+        "model": "qwen/qwen3.6-27b",
+        "completion": {
+          "ok": true,
+          "seconds": 0.81,
+          "error": "",
+          "usage": {}
+        },
+        "structured": {
+          "ok": true,
+          "seconds": 1.49,
+          "error": ""
+        },
+        "tool_calling": {
+          "ok": true,
+          "seconds": 0.39,
+          "error": ""
+        },
+        "usable": true
+      }
+    ]
+  },
+  "groq_planning_quality": [
+    {
+      "model": "openai/gpt-oss-120b",
+      "vague": {
+        "ok": true,
+        "seconds": 3.11,
+        "tasks": 0,
+        "withheld_plan": true,
+        "n_tasks_ok": true,
+        "deps_ok": true,
+        "agents_ok": true,
+        "ambig_ok": true,
+        "asked_questions": true,
+        "n_subq": 0,
+        "n_criteria": 2,
+        "points": 5
+      },
+      "clear": {
+        "ok": true,
+        "seconds": 2.54,
+        "tasks": 7,
+        "withheld_plan": false,
+        "n_tasks_ok": true,
+        "deps_ok": true,
+        "agents_ok": true,
+        "ambig_ok": true,
+        "asked_questions": true,
+        "n_subq": 5,
+        "n_criteria": 4,
+        "points": 5
+      },
+      "total": 10
+    },
+    {
+      "model": "openai/gpt-oss-20b",
+      "vague": {
+        "ok": false,
+        "seconds": 0.72,
+        "error": "Error code: 400 - {'error': {'message': \"Tool call validation failed: tool call validation failed: parameters for tool Plan did not match sc",
+        "points": 0
+      },
+      "clear": {
+        "ok": true,
+        "seconds": 1.74,
+        "tasks": 7,
+        "withheld_plan": false,
+        "n_tasks_ok": true,
+        "deps_ok": true,
+        "agents_ok": true,
+        "ambig_ok": true,
+        "asked_questions": true,
+        "n_subq": 10,
+        "n_criteria": 8,
+        "points": 5
+      },
+      "total": 5
+    },
+    {
+      "model": "llama-3.3-70b-versatile",
+      "vague": {
+        "ok": true,
+        "seconds": 0.56,
+        "tasks": 4,
+        "withheld_plan": false,
+        "n_tasks_ok": true,
+        "deps_ok": true,
+        "agents_ok": true,
+        "ambig_ok": true,
+        "asked_questions": false,
+        "n_subq": 2,
+        "n_criteria": 3,
+        "points": 4
+      },
+      "clear": {
+        "ok": true,
+        "seconds": 1.13,
+        "tasks": 8,
+        "withheld_plan": false,
+        "n_tasks_ok": true,
+        "deps_ok": true,
+        "agents_ok": true,
+        "ambig_ok": true,
+        "asked_questions": true,
+        "n_subq": 6,
+        "n_criteria": 3,
+        "points": 5
+      },
+      "total": 9
+    },
+    {
+      "model": "llama-3.1-8b-instant",
+      "vague": {
+        "ok": true,
+        "seconds": 0.85,
+        "tasks": 6,
+        "withheld_plan": false,
+        "n_tasks_ok": true,
+        "deps_ok": true,
+        "agents_ok": true,
+        "ambig_ok": false,
+        "asked_questions": true,
+        "n_subq": 3,
+        "n_criteria": 4,
+        "points": 4
+      },
+      "clear": {
+        "ok": false,
+        "seconds": 2.19,
+        "error": "Error code: 400 - {'error': {'message': \"Failed to call a function. Please adjust your prompt. See 'failed_generation' for more details.\", '",
+        "points": 0
+      },
+      "total": 4
+    },
+    {
+      "model": "qwen/qwen3.6-27b",
+      "vague": {
+        "ok": false,
+        "seconds": 4.07,
+        "error": "Error code: 400 - {'error': {'message': \"Failed to call a function. Please adjust your prompt. See 'failed_generation' for more details.\", '",
+        "points": 0
+      },
+      "clear": {
+        "ok": true,
+        "seconds": 3.77,
+        "tasks": 5,
+        "withheld_plan": false,
+        "n_tasks_ok": true,
+        "deps_ok": true,
+        "agents_ok": true,
+        "ambig_ok": true,
+        "asked_questions": true,
+        "n_subq": 4,
+        "n_criteria": 4,
+        "points": 5
+      },
+      "total": 5
+    }
+  ],
+  "groq_critic_quality": [
+    {
+      "model": "openai/gpt-oss-120b",
+      "run": 1,
+      "ok": true,
+      "seconds": 4.54,
+      "approved": false,
+      "n_problems": 6,
+      "hits": {
+        "D1_unsupported": true,
+        "D2_fabricated": true,
+        "D3_contradiction": true,
+        "D4_overgeneral": true,
+        "D5_irrelevant": true,
+        "D6_missing": true
+      },
+      "found": 6,
+      "rejected_correctly": true
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "run": 2,
+      "ok": true,
+      "seconds": 1.56,
+      "approved": false,
+      "n_problems": 6,
+      "hits": {
+        "D1_unsupported": true,
+        "D2_fabricated": true,
+        "D3_contradiction": true,
+        "D4_overgeneral": true,
+        "D5_irrelevant": true,
+        "D6_missing": true
+      },
+      "found": 6,
+      "rejected_correctly": true
+    },
+    {
+      "model": "llama-3.3-70b-versatile",
+      "run": 1,
+      "ok": true,
+      "seconds": 0.63,
+      "approved": false,
+      "n_problems": 5,
+      "hits": {
+        "D1_unsupported": true,
+        "D2_fabricated": true,
+        "D3_contradiction": false,
+        "D4_overgeneral": false,
+        "D5_irrelevant": true,
+        "D6_missing": false
+      },
+      "found": 3,
+      "rejected_correctly": true
+    },
+    {
+      "model": "llama-3.3-70b-versatile",
+      "run": 2,
+      "ok": true,
+      "seconds": 0.46,
+      "approved": false,
+      "n_problems": 4,
+      "hits": {
+        "D1_unsupported": true,
+        "D2_fabricated": true,
+        "D3_contradiction": false,
+        "D4_overgeneral": false,
+        "D5_irrelevant": true,
+        "D6_missing": false
+      },
+      "found": 3,
+      "rejected_correctly": true
+    },
+    {
+      "model": "llama-3.1-8b-instant",
+      "run": 1,
+      "ok": false,
+      "error": "Error code: 400 - {'error': {'message': \"Failed to call a function. Please adjust your prompt. See 'failed_generation' f",
+      "found": 0,
+      "seconds": 0.37
+    },
+    {
+      "model": "llama-3.1-8b-instant",
+      "run": 2,
+      "ok": false,
+      "error": "Error code: 400 - {'error': {'message': \"Failed to call a function. Please adjust your prompt. See 'failed_generation' f",
+      "found": 0,
+      "seconds": 0.65
+    }
+  ]
+}

@@ -121,7 +121,42 @@ def main() -> int:
             hand_md += ["**Enforced invariants:**", ""] + [f"- {i}" for i in inv] + [""]
     (docs / "A3_handoff_contracts.md").write_text("\n".join(hand_md), encoding="utf-8")
 
-    for name in ("A2_state_specification.md", "A3_handoff_contracts.md"):
+    # ----------------------------------------------------------------- tools
+    from app.schemas.common import AgentId
+    from app.tools import all_specs, permission_matrix, tools_for
+
+    tool_md = [
+        STAMP, "", "# Tool Specification and Permission Boundaries (§13, §14)", "",
+        "Permission is a property of the call, not of a prompt. `run_tool()` takes an `agent_id`",
+        "and checks it against the tool's `allowed_agents` **before** the tool function is",
+        "reached, so a forbidden call cannot succeed whatever the model was persuaded to emit.",
+        "This matters here because the corpus deliberately contains a prompt-injection payload:",
+        "an injected instruction cannot grant an agent a tool it does not have.", "",
+        "Every refused call is written to the audit log with `outcome: permission_denied`.", "",
+        "## Permission matrix", "",
+        permission_matrix(), "",
+        "## Tools by agent", "",
+    ]
+    for agent in sorted(AgentId.llm_agents(), key=lambda a: a.value):
+        names = sorted(s.name for s in tools_for(agent))
+        tool_md.append(f"- **{agent.value}** ({len(names)}): " + ", ".join(f"`{n}`" for n in names))
+    tool_md += ["", "## Tool details", ""]
+
+    for spec in sorted(all_specs(), key=lambda s: s.name):
+        allowed = ", ".join(sorted(a.value for a in spec.allowed_agents))
+        tool_md += [
+            f"### `{spec.name}`", "",
+            spec.description, "",
+            f"- **Permitted agents:** {allowed}",
+            f"- **Writes durable state:** {'yes' if spec.is_write else 'no'}", "",
+            f"**Why these agents and no others.** {spec.rationale}", "",
+            "**Input**", "", field_table(spec.input_model), "",
+            "**Output**", "", field_table(spec.output_model), "",
+        ]
+    (docs / "A4_tool_specification.md").write_text("\n".join(tool_md), encoding="utf-8")
+
+    for name in ("A2_state_specification.md", "A3_handoff_contracts.md",
+                 "A4_tool_specification.md"):
         p = docs / name
         print(f"wrote {p.relative_to(ROOT)}  ({len(p.read_text(encoding='utf-8').splitlines())} lines)")
     return 0

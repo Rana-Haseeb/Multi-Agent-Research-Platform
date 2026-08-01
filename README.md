@@ -7,9 +7,9 @@ and hand you a report where every claim traces back to a source.**
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1C3C3C?style=for-the-badge)](https://langchain-ai.github.io/langgraph/)
-[![Groq](https://img.shields.io/badge/Groq-gpt--oss--120b-F55036?style=for-the-badge)](https://groq.com)
-[![Postgres](https://img.shields.io/badge/Supabase-Postgres_17-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
-[![Tests](https://img.shields.io/badge/tests-100_passing-success?style=for-the-badge)](tests/)
+[![Providers](https://img.shields.io/badge/LLM-5_providers_·_failover-8957e5?style=for-the-badge)](#-measured-decisions-no-vibes)
+[![Postgres](https://img.shields.io/badge/Postgres-17-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
+[![Tests](https://img.shields.io/badge/tests-143_passing-success?style=for-the-badge)](tests/)
 
 <samp>Visibility Bots Innovation Lab · AI Summer Fellowship 2026 · Track 2: NLP & AI Agents · **Week 4**</samp>
 
@@ -237,9 +237,10 @@ fact however assertively it's written.
 
 ### Cross-provider failover
 
-Five OpenAI-compatible providers in one registry. Fallback spans **providers**, not just models —
-a rate-limited Groq key continues on OpenRouter *mid-workflow*. Pull a key during a run and the
-workflow completes, with the switch recorded in the trace.
+Five OpenAI-compatible providers sit behind one registry. Fallback spans **providers**, not just
+models within one — an exhausted quota on the primary continues on the next provider
+*mid-workflow*. Pull a key during a run and the workflow still completes, with the switch
+recorded in the trace.
 
 ---
 
@@ -250,46 +251,51 @@ Every engineering choice here was made from data in
 
 ### Which model? Two probes, two different answers
 
-The naive probe — *"can this model emit structured output?"* — passed **all five** candidates.
-That test was too easy. The Supervisor needs a *nested* plan with dependencies, so:
+Five candidate models were probed. The naive test — *"can this model emit structured output?"* —
+passed **all five**. That test was too easy. The Supervisor needs a *nested* plan with task
+dependencies and agent assignment, so a second probe measured that instead:
 
 <div align="center">
 
-| Model | req/day | tok/min | Planning | Critic defects found |
-|---|---:|---:|:---:|:---:|
-| **`openai/gpt-oss-120b`** | 1,000 | 8,000 | **10/10** | **6 / 6** ✅ |
-| **`llama-3.3-70b-versatile`** | 1,000 | 12,000 | 9/10 | 3 / 6 |
-| `openai/gpt-oss-20b` | 1,000 | 8,000 | 5/10 | ❌ HTTP 400 |
-| `qwen/qwen3.6-27b` | 1,000 | 8,000 | 5/10 | — |
-| `llama-3.1-8b-instant` | 14,400 | 6,000 | 4/10 | ❌ HTTP 400 |
+| Candidate | Params | Planning score | Critic defects found |
+|---|:---:|:---:|:---:|
+| **Reasoning tier** *(selected)* | 120B | **10 / 10** | **6 / 6** ✅ |
+| **Throughput tier** *(selected)* | 70B | 9 / 10 | 3 / 6 |
+| Candidate C | 27B | 5 / 10 | ❌ HTTP 400 |
+| Candidate D | 20B | 5 / 10 | ❌ HTTP 400 |
+| Candidate E | 8B | 4 / 10 | ❌ HTTP 400 |
 
 </div>
 
-**Three models hard-fail on nested schemas.** The simple probe said five were usable; the
-realistic one says two.
+**Three of five hard-fail on nested schemas** with `Tool call validation failed`. The simple
+probe said five were usable; the realistic one says two. Exact model ids and raw results live in
+[`scripts/probe_results.json`](scripts/probe_results.json).
 
 ### The tiering, and why it's defensible
 
-The critic probe plants **six defects** in an analysis and scores detection. What llama *missed*
-decided the architecture:
+The critic probe plants **six defects** in an analysis and scores detection deterministically.
+What the smaller model *missed* decided the architecture:
 
 | | Unsupported claim | Fabricated cite | Wrong cite | Contradiction | Overgeneralised | Missing criterion |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `gpt-oss-120b` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `llama-3.3-70b` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Reasoning tier** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Throughput tier** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 
-llama caught **every citation defect** and **no reasoning defect**. Sound where the work is
-mechanical, unsound where it's judgement. So:
+It caught **every citation defect** and **no reasoning defect** — sound where the work is
+mechanical, unsound where it is judgement. Hence:
 
-- 🧠 **Judgement tier** → `gpt-oss-120b` — Supervisor, Analyst, **Critic**
-- ⚡ **Throughput tier** → `llama-3.3-70b` — Researcher (×N parallel), Fact-Checker, Writer
+- 🧠 **Judgement tier** *(120B, ~1.2 s)* — Supervisor, Analyst, **Critic**
+- ⚡ **Throughput tier** *(70B, ~0.3 s, 50% more tokens/min)* — Researcher ×N, Fact-Checker, Writer
+
+The throughput tier carries the parallel fan-out, where latency multiplies and its extra
+tokens-per-minute headroom matters more than its reasoning ceiling.
 
 <details>
 <summary><b>A metric that nearly picked the wrong model</b></summary>
 
 <br/>
 
-The first version of the planning probe scored `gpt-oss-120b` at 6/8 because it returned **zero
+The first version of the planning probe scored the reasoning-tier model at 6/8 because it returned **zero
 tasks** on a vague request. But it had also correctly set `needs_clarification=True` — refusing
 to plan until the objective is known is the *right* behaviour, and the scorer was punishing it.
 
@@ -348,6 +354,77 @@ Q: 'CrewAI human in the loop approval'
 
 ---
 
+## 🧩 Inside an agent
+
+Each agent is a function returning an `AgentOutcome`. **No agent raises into the graph** — a node
+that raises takes the whole workflow down, while one that returns a failed outcome lets the
+Supervisor decide whether to retry, degrade, or stop.
+
+### Context boundaries differ in kind, not just size
+
+§21 says don't send the whole history to every agent. The reason isn't only cost: an agent given
+everything must decide what's relevant before it can start, and that decision is where irrelevant
+material leaks into output.
+
+| Agent | Receives | Deliberately withheld |
+|---|---|---|
+| Supervisor | Plan state + evidence **counts** | Evidence bodies — it routes, it doesn't read |
+| Researcher | **Its own sub-question only** | Sibling findings, so branches stay independent |
+| Analyst | Evidence grouped by question, truncated | Raw corpus |
+| Fact-Checker | Conclusions + **only cited** evidence | Uncited evidence — not its question |
+| Critic | Full analysis + one-line evidence **index** | Evidence bodies — the largest token saving |
+| Writer | Approved analysis + cited evidence | Rejected drafts, superseded feedback |
+
+Measured on a fixture: full-context control **1,104 chars** vs. Researcher **276**, Supervisor
+**378**, Writer **406**, Critic **671**. Experiment 4 measures this at real scale.
+
+### Fail-closed, in three places
+
+A quality gate that breaks *open* is worse than no gate:
+
+- **A Critic outage is not an approval.** If the Critic's model call fails, the verdict falls back
+  to the Fact-Checker's deterministic findings. Fabricated citation → still rejected. Clean →
+  approved, but the report *discloses that no review happened*.
+- **A lenient Critic cannot approve past a mechanical failure.** Fabricated citations or uncited
+  major conclusions override an `approved=true` verdict.
+- **Evidence IDs come from the tool layer, never the model.** A researcher that hallucinates
+  having stored something produces a handoff with no evidence — which the schema then forces into
+  a declared gap.
+
+### What a real research task looks like
+
+One live run, against the corpus:
+
+```
+tools: search_corpus ×3 · extract_document · store_evidence ×4
+E101 [fact/high]     LangGraph provides HITL approval via interrupt()   src: vendor docs
+E104 [claim/medium]  Understanding reducers took most of a week          src: practitioner blog
+```
+
+Three searches with different phrasings before concluding, and source type correctly driving
+classification — vendor documentation yields `fact`, a blog yields `claim`.
+
+Its prose summary *did* drift, mentioning another framework's API under a LangGraph question. But
+**no evidence was stored for that claim.** Drift stayed in prose and never entered the record —
+which is the entire argument for evidence-backed reporting.
+
+### The baseline is built now, not later
+
+`app/baseline/single_agent.py` is Experiment 1's control, written alongside the specialists rather
+than assembled afterwards when the temptation to weaken it would be strongest.
+
+Same corpus, same tools, same model tier, same metering, same output schema. **The only variable
+is architecture** — one agent, one context, no decomposition, no critic, no citation
+verification, no revision loop.
+
+It deliberately does *not* filter fabricated citations from its own output. Whether a single agent
+invents evidence IDs is precisely what the Fact-Checker exists to prevent, and hiding it would
+erase the measurement.
+
+> If the specialists don't beat this, that's a real finding and the builder journal will say so.
+
+---
+
 ## 🚀 Quick start
 
 ```bash
@@ -360,7 +437,8 @@ pip install -r requirements.txt
 cp .env.example .env    # then add at least one provider key
 ```
 
-Only **one** provider key is required. Groq's free tier is the default.
+Only **one** provider key is required. Any of the five supported OpenAI-compatible providers
+works; see `.env.example` for the list.
 
 ```bash
 python scripts/probe_providers.py     # which keys and models actually work
@@ -376,9 +454,9 @@ python -m pytest tests/ -q            # 100 tests
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_PROVIDER` | `groq` | `groq` · `google` · `openrouter` · `xai` · `openai` |
-| `LLM_FALLBACK_PROVIDERS` | `openrouter` | Comma-separated cross-provider chain |
-| `DATABASE_URL` | — | Supabase **session pooler** string. Optional. |
+| `LLM_PROVIDER` | *see `.env.example`* | Active provider (5 supported) |
+| `LLM_FALLBACK_PROVIDERS` | — | Comma-separated cross-provider failover chain |
+| `DATABASE_URL` | — | Postgres connection string. Optional. |
 | `MAX_REVISION_CYCLES` | `2` | Critic loop hard cap |
 | `MAX_AGENT_CALLS_PER_RUN` | `40` | Circuit breaker |
 | `MAX_COST_USD_PER_RUN` | `0.50` | Spend ceiling |
@@ -387,8 +465,8 @@ python -m pytest tests/ -q            # 100 tests
 **Postgres is optional.** With no `DATABASE_URL` the store no-ops rather than crashing — the
 workflow, tests and evaluation all run without a database.
 
-⚠️ Use the Supabase **session pooler** host. The direct `db.<ref>.supabase.co` host is IPv6-only
-and won't resolve on Streamlit Cloud.
+⚠️ If using a managed Postgres with both direct and pooled hosts, use the **pooled (session)**
+host — direct hosts are frequently IPv6-only and will not resolve on IPv4-only hosting.
 
 </details>
 
@@ -399,14 +477,14 @@ and won't resolve on Streamlit Cloud.
 ```
 multi-agent-research-platform/
 ├── app/
-│   ├── config.py              ← 5 providers · per-agent model tiers · budgets
+│   ├── config.py              ← 5 providers · per-agent model tiers · run budgets
 │   ├── schemas/               ← evidence · tasks · 7 handoff contracts · reports
 │   ├── graph/state.py         ← shared state · reducers · §27 permission table
 │   ├── tools/                 ← 7 tools behind an agent-permission registry
 │   ├── storage/               ← BM25 corpus index · Postgres evidence store
 │   ├── services/              ← cross-provider LLM · per-agent token metering
-│   ├── agents/                ← ⏳ Phase 4
-│   └── baseline/              ← ⏳ single-agent control for Experiment 1
+│   ├── agents/                ← 6 agents · separate prompts · per-role context builders
+│   └── baseline/              ← single-agent control for Experiment 1
 ├── corpus/                    ← 24 documents + planted_defects.json
 ├── docs/                      ← generated from live code, never hand-written
 ├── scripts/
@@ -435,7 +513,7 @@ reported from memory is not done*.
 | **1** | Schemas · shared state · 7 handoff contracts | 22/22 | ✅ |
 | **2** | 24-doc corpus · BM25 · Postgres evidence store | 26/26 | ✅ |
 | **3** | 7 tools · permission boundaries · audit log | 23/23 | ✅ |
-| 4 | Six agents + single-agent baseline | — | ⏳ |
+| **4** | Six agents · context boundaries · single-agent baseline | 30/30 | ✅ |
 | 5 | Orchestration graph (sequential) | — | ⏳ |
 | 6 | Critic revision loop | — | ⏳ |
 | 7 | Parallel fan-out + measured speedup | — | ⏳ |
@@ -445,11 +523,13 @@ reported from memory is not done*.
 | 11 | Docs · security review · deploy | — | ⏳ |
 
 ```bash
-python scripts/verify_phase0.py && python scripts/verify_phase1.py \
-  && python scripts/verify_phase2.py && python scripts/verify_phase3.py
+for p in 0 1 2 3 4; do python scripts/verify_phase$p.py; done
 ```
 
-**Current: 113/113 acceptance checks · 100 tests passing.**
+**Current: 139/139 acceptance checks · 143 tests passing.**
+
+`python scripts/verify_phase4.py --live` adds 4 further checks that run a real research task
+against the API rather than mocks.
 
 ---
 
@@ -460,15 +540,16 @@ Stated plainly, because a limitation you disclose is engineering and one you hid
 - **The corpus is synthetic.** 24 documents written for this project. Retrieval quality on real
   web sources is unmeasured. Live search exists behind `ENABLE_LIVE_SEARCH` but isn't the
   evaluated path.
-- **No end-to-end workflow numbers yet.** Latency, cost and quality figures arrive in Phase 10
+- **No end-to-end workflow numbers yet.** Agents are verified individually and one live research
+  task runs per build, but full-workflow latency, cost and quality figures arrive in Phase 10
   from actual runs. This README will not carry an estimated metric.
 - **BM25, not semantic search.** Adequate for 24 keyword-dense documents; a paraphrased query
   with no shared vocabulary will retrieve poorly.
-- **Free-tier rate limits.** 1,000 requests/day per model. Sufficient for ~480 planned calls,
-  but not for sustained load.
+- **Free-tier rate limits.** The default configuration runs on free provider tiers with daily
+  request quotas. Sufficient for the ~480 calls this project plans, not for sustained load.
 - **Single-language corpus.** English only.
-- **Cost tracking reads $0.00 on Groq's free tier.** Token counts are real and measured; USD
-  figures only become meaningful on a paid provider.
+- **Cost tracking reads $0.00 on free tiers.** Token counts are real and measured per agent; USD
+  figures only become meaningful when running against a paid provider.
 
 ---
 

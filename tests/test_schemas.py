@@ -8,6 +8,7 @@ the Week 3 post-mortem's central lesson (§7.3).
 from __future__ import annotations
 
 import operator
+import pathlib
 from typing import Annotated, TypedDict
 
 import pytest
@@ -421,3 +422,54 @@ def test_langgraph_actually_merges_parallel_writes():
     assert len(out["evidence"]) == 3, "parallel evidence writes were lost"
     assert {e.evidence_id for e in out["evidence"]} == {"E101", "E201", "E301"}
     assert out["task_status"] == {t: TaskStatus.COMPLETED for t in ("R1", "R2", "R3")}
+
+
+def test_task_plan_accepts_tasks_from_a_re_imported_module():
+    """State round-trips through the checkpointer; class identity does not survive a reload.
+
+    Streamlit hot-reload, a Cloud redeploy, or a resumed session in a fresh worker all produce a
+    second `Task` class. Pydantic compares by identity, so a valid task then fails validation
+    with `Input should be a valid dictionary or instance of Task` — while showing a Task as the
+    input value. This reproduces that by loading the module a second time under a new name.
+    """
+    import importlib.util
+    import sys as _sys
+
+    spec = importlib.util.spec_from_file_location(
+        "app.schemas.tasks__reimported",
+        pathlib.Path(__file__).resolve().parents[1] / "app" / "schemas" / "tasks.py",
+    )
+    other = importlib.util.module_from_spec(spec)
+    _sys.modules[spec.name] = other
+    spec.loader.exec_module(other)
+
+    assert other.Task is not Task, "the reimport did not produce a distinct class"
+
+    stale = other.Task(task_id="R1", description="d",
+                       assigned_agent=AgentId.RESEARCHER, research_question="q?")
+    plan = TaskPlan(tasks=[stale])
+    assert len(plan.tasks) == 1 and plan.tasks[0].task_id == "R1"
+    assert isinstance(plan.tasks[0], Task)
+
+
+def test_task_plan_still_validates_a_coerced_plan():
+    """Coercion must not become a bypass: a cycle is still a cycle after the round trip."""
+    import importlib.util
+    import sys as _sys
+
+    spec = importlib.util.spec_from_file_location(
+        "app.schemas.tasks__reimported2",
+        pathlib.Path(__file__).resolve().parents[1] / "app" / "schemas" / "tasks.py",
+    )
+    other = importlib.util.module_from_spec(spec)
+    _sys.modules[spec.name] = other
+    spec.loader.exec_module(other)
+
+    cyclic = [
+        other.Task(task_id="R1", description="a", assigned_agent=AgentId.RESEARCHER,
+                   research_question="q?", depends_on=["A1"]),
+        other.Task(task_id="A1", description="b", assigned_agent=AgentId.ANALYST,
+                   depends_on=["R1"]),
+    ]
+    with pytest.raises(ValidationError, match="cycle"):
+        TaskPlan(tasks=cyclic)

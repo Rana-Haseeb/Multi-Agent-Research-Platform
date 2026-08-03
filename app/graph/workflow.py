@@ -58,6 +58,7 @@ from app.graph.nodes import (
     make_critic,
     make_evidence_gate,
     make_fact_checker,
+    make_final_review,
     make_finalise,
     make_intake,
     make_plan,
@@ -90,6 +91,7 @@ def build_workflow(deps: WorkflowDeps, checkpointer: Any = None):
     g.add_node(R.CRITIC, make_critic(deps))
     g.add_node(R.REVISION, make_revision(deps))
     g.add_node(R.WRITER, make_writer(deps))
+    g.add_node(R.FINAL_REVIEW, make_final_review(deps))
     g.add_node(R.FINALISE, make_finalise(deps))
 
     g.add_edge(START, R.INTAKE)
@@ -109,7 +111,8 @@ def build_workflow(deps: WorkflowDeps, checkpointer: Any = None):
                             [R.REVISION, R.WRITER, END])
     g.add_conditional_edges(R.REVISION, R.make_route_after_revision(deps),
                             [R.ANALYST, R.PLAN, END])
-    g.add_conditional_edges(R.WRITER, R.route_after_writer, [R.FINALISE, END])
+    g.add_conditional_edges(R.WRITER, R.route_after_writer, [R.FINAL_REVIEW, END])
+    g.add_conditional_edges(R.FINAL_REVIEW, R.route_after_final_review, [R.FINALISE, END])
     g.add_edge(R.FINALISE, END)
 
     return g.compile(checkpointer=checkpointer or MemorySaver())
@@ -279,9 +282,125 @@ EDGES: list[tuple[str, str, str]] = [
         (R.CRITIC, R.REVISION, "rejected, under cap"),
         (R.REVISION, R.ANALYST, "re-analysis only"),
         (R.REVISION, R.PLAN, "needs more research"),
-        (R.WRITER, R.FINALISE, ""),
+        (R.WRITER, R.FINAL_REVIEW, ""),
+        (R.FINAL_REVIEW, R.FINALISE, "reviewed"),
         (R.FINALISE, END, ""),
 ]
+
+
+class WorkflowSession:
+    """A resumable run. Holds the graph, checkpointer and usage tracker across interrupts.
+
+    ``run_workflow`` builds a fresh graph per call, which is correct for unattended runs but
+    cannot support ``interrupt()``: resuming needs the *same* compiled graph, the *same*
+    checkpointer and the *same* usage tracker, or the resumed half of the run is metered
+    separately and the checkpoint cannot be found at all.
+
+    Week 3's lesson applies directly — the session object must be held in
+    ``st.session_state`` so it survives Streamlit's top-to-bottom rerun on every interaction.
+    A session rebuilt per rerun loses the checkpointer and the pause becomes unresumable.
+
+    Usage::
+
+        session = WorkflowSession("Compare X and Y", human_in_the_loop=True)
+        result = session.start()
+        while session.pending_interrupt():
+            result = session.resume({"decision": "approve"})
+    """
+
+    def __init__(
+        self,
+        user_request: str,
+        *,
+        run_id: str | None = None,
+        index: Any = None,
+        store: Any = _UNSET,
+        clarifications: list | None = None,
+        human_in_the_loop: bool = True,
+        parallel_research: bool = False,
+        critic_enabled: bool = True,
+        max_revisions: int | None = None,
+        full_context: bool = False,
+    ):
+        self.run_id = run_id or uuid.uuid4().hex[:12]
+        self.user_request = user_request
+        self.deps = WorkflowDeps(
+            index=index if index is not None else get_index(),
+            store=EvidenceStore() if store is _UNSET else store,
+            usage=UsageTracker(run_id=self.run_id),
+            run_id=self.run_id,
+            parallel_research=parallel_research,
+            critic_enabled=critic_enabled,
+            max_revisions=max_revisions,
+            full_context=full_context,
+            human_in_the_loop=human_in_the_loop,
+        )
+        self.checkpointer = MemorySaver()
+        self.graph = build_workflow(self.deps, checkpointer=self.checkpointer)
+        self.thread_id = self.run_id
+        self.config = {
+            "configurable": {"thread_id": self.thread_id},
+            "recursion_limit": (
+                4 * (settings.max_revision_cycles + settings.max_research_rounds) + 30
+            ),
+        }
+        self._initial = initial_state(user_request, run_id=self.run_id)
+        if clarifications:
+            self._initial["clarifications"] = list(clarifications)
+        self._started = 0.0
+        self._elapsed = 0.0
+
+    # ------------------------------------------------------------------ drive
+    def start(self) -> WorkflowResult:
+        self._started = time.perf_counter()
+        return self._invoke(self._initial)
+
+    def resume(self, decision: Any) -> WorkflowResult:
+        """Continue a paused run with the human's decision.
+
+        ``decision`` may be a string ("approve"), a dict, or a ``HumanCheckpointResponse``;
+        the nodes normalise all three.
+        """
+        from langgraph.types import Command
+
+        if not self._started:
+            self._started = time.perf_counter()
+        return self._invoke(Command(resume=decision))
+
+    def _invoke(self, payload: Any) -> WorkflowResult:
+        try:
+            state = self.graph.invoke(payload, config=self.config)
+        except Exception as e:  # noqa: BLE001
+            state = dict(self.snapshot() or self._initial)
+            state["status"] = WorkflowStatus.FAILED
+            state["abort_reason"] = f"Graph execution failed: {type(e).__name__}: {e}"[:300]
+        self._elapsed = time.perf_counter() - self._started
+        return WorkflowResult(run_id=self.run_id, state=state, deps=self.deps,
+                              wall_seconds=self._elapsed, thread_id=self.thread_id)
+
+    # ------------------------------------------------------------------ state
+    def snapshot(self) -> dict | None:
+        snap = self.graph.get_state(self.config)
+        return dict(snap.values) if snap and snap.values else None
+
+    def pending_interrupt(self) -> dict | None:
+        """The payload the graph is paused on, or None if it is not waiting for a human.
+
+        This is what the §29 approval-compliance metric reads: a workflow that reached the
+        Writer without ever surfacing a checkpoint did not respect the gate.
+        """
+        snap = self.graph.get_state(self.config)
+        if not getattr(snap, "next", None):
+            return None
+        for task in getattr(snap, "tasks", []) or []:
+            interrupts = getattr(task, "interrupts", None)
+            if interrupts:
+                value = interrupts[0].value
+                return value if isinstance(value, dict) else {"payload": value}
+        return None
+
+    def is_waiting(self) -> bool:
+        return self.pending_interrupt() is not None
 
 
 def describe_topology() -> str:

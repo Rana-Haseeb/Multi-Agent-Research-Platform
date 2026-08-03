@@ -39,8 +39,10 @@ flowchart TD
     critic -->|rejected, under cap| revision
     revision -->|re-analysis only| analyst
     revision -->|needs more research| supervisor_plan
+    final_review["final_review"]
+    writer --> final_review
     finalise["finalise"]
-    writer --> finalise
+    final_review -->|reviewed| finalise
     finalise --> done
 ```
 
@@ -64,7 +66,8 @@ flowchart TD
   critic               -> revision             [rejected, under cap]
   revision             -> analyst              [re-analysis only]
   revision             -> supervisor_plan      [needs more research]
-  writer               -> finalise             
+  writer               -> final_review         
+  final_review         -> finalise             [reviewed]
   finalise             -> __end__              
 ```
 

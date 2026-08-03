@@ -45,6 +45,10 @@ Dependency-ordered task plan (§11). Validated as a DAG.
 | `created_by` | `AgentId` | no |  |
 | `revision` | `int` | no | Bumped when the user edits or the plan re-plans |
 
+**Enforced invariants:**
+
+- Accept task objects whose class is not *this* process's ``Task``.
+
 ## Researcher → Analyst — `ResearchHandoff`
 
 One per research task; accumulates additively under the parallel fan-out.

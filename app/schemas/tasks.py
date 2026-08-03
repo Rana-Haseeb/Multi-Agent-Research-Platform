@@ -71,6 +71,34 @@ class TaskPlan(BaseModel):
     revision: int = Field(default=0, description="Bumped when the user edits or the plan re-plans")
 
     # ------------------------------------------------------------- validation
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_tasks(cls, data):
+        """Accept task objects whose class is not *this* process's ``Task``.
+
+        Workflow state round-trips through the LangGraph checkpointer, and anything that
+        re-imports ``app.schemas.tasks`` — Streamlit's hot reload, a Cloud redeploy, a resumed
+        session in a fresh worker — produces a second ``Task`` class. Pydantic compares by class
+        identity, so a perfectly valid task then fails with the confusing
+
+            Input should be a valid dictionary or instance of Task
+            [input_value=Task(task_id='R1', ...), input_type=Task]
+
+        where the value plainly *is* a Task. Found by resuming a paused run in the dashboard
+        after an edit triggered a reload. Dumping to a dict first makes reconstruction depend on
+        the data rather than on which import produced it.
+        """
+        if isinstance(data, dict) and isinstance(data.get("tasks"), (list, tuple)):
+            data = {
+                **data,
+                "tasks": [
+                    t if isinstance(t, (dict, Task)) else
+                    (t.model_dump() if hasattr(t, "model_dump") else t)
+                    for t in data["tasks"]
+                ],
+            }
+        return data
+
     @model_validator(mode="after")
     def _valid_dag(self) -> TaskPlan:
         ids = [t.task_id for t in self.tasks]

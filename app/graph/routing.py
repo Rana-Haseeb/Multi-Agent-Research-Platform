@@ -39,6 +39,7 @@ FACT_CHECKER = "fact_checker"
 CRITIC = "critic"
 REVISION = "revision"
 WRITER = "writer"
+FINAL_REVIEW = "final_review"
 FINALISE = "finalise"
 
 
@@ -186,5 +187,15 @@ def make_route_after_revision(deps: WorkflowDeps):
 
 
 def route_after_writer(state: WorkflowState) -> str:
-    """Phase 8 inserts the second human checkpoint between here and finalise."""
+    """To the second human checkpoint (§20), which then falls through to finalise."""
+    return END if _dead(state) else FINAL_REVIEW
+
+
+def route_after_final_review(state: WorkflowState) -> str:
+    """Always finalise.
+
+    A rejected recommendation still completes the run: the report exists, the objection is
+    recorded inside it, and the trace shows what happened. Discarding the artefact because the
+    reviewer disagreed would destroy the evidence of the disagreement.
+    """
     return END if _dead(state) else FINALISE

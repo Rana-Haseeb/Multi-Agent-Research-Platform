@@ -52,6 +52,11 @@ class WorkflowDeps:
     critic_enabled: bool = True                  # Experiment 2
     max_revisions: int | None = None             # Experiment 5
     full_context: bool = False                   # Experiment 4
+    # §20 human checkpoints. Off by default so the evaluation runner and experiments —
+    # which cannot sit at a prompt — run unattended. When off, both gates auto-approve
+    # and SAY SO in human_decisions, so a run that skipped review is never mistaken for
+    # one that passed it.
+    human_in_the_loop: bool = False
 
     def revision_cap(self) -> int:
         return settings.max_revision_cycles if self.max_revisions is None else self.max_revisions
@@ -179,22 +184,194 @@ def make_plan(deps: WorkflowDeps):
 # 4. plan approval — the §20 checkpoint (interrupt arrives in Phase 8)
 # --------------------------------------------------------------------------- #
 def make_plan_approval(deps: WorkflowDeps):
-    def plan_approval(state: WorkflowState) -> dict:
-        """Auto-approves in this phase. Phase 8 replaces the body with ``interrupt()``.
+    """§20 checkpoint 1 — approve, edit or reject the plan before any expensive research runs.
 
-        It exists as a node now rather than being added later so the graph topology — and every
-        routing decision around it — is already correct when the interrupt is dropped in.
-        """
-        return {
-            "plan_approved": True,
-            "awaiting": "",
-            "status": WorkflowStatus.RESEARCHING,
-            "human_decisions": [{"gate": "plan_approval", "decision": "auto_approved",
-                                 "note": "Human checkpoint is wired in Phase 8."}],
-            "trace": [_trace(AgentId.SYSTEM, "checkpoint", "plan_approval", "auto-approved")],
-        }
+    **Why this gate is here and not later.** Research is the most expensive stage of the
+    workflow; pausing after it would show the user a bill they cannot decline. Everything before
+    this point costs two model calls.
+
+    **``interrupt()`` re-runs the node on resume.** LangGraph replays the node from its start and
+    ``interrupt()`` returns the resumed value instead of raising, so any code above it executes
+    twice. Nothing here mutates state before the call, which is what makes that safe — a
+    counter incremented above the interrupt would double on every resume.
+
+    When ``human_in_the_loop`` is off the gate auto-approves and records that it did. The
+    evaluation runner and the experiments cannot sit at a prompt, and a run that skipped review
+    must never be indistinguishable from one that passed it (§29 approval compliance).
+    """
+    def plan_approval(state: WorkflowState) -> dict:
+        if not deps.human_in_the_loop:
+            return {
+                "plan_approved": True,
+                "awaiting": "",
+                "status": WorkflowStatus.RESEARCHING,
+                "human_decisions": [{"gate": "plan_approval", "decision": "auto_approved",
+                                     "note": "Unattended run: human-in-the-loop disabled."}],
+                "trace": [_trace(AgentId.SYSTEM, "checkpoint", "plan_approval",
+                                 "auto-approved (unattended)")],
+            }
+
+        from langgraph.types import interrupt
+
+        plan = state["plan"]
+        brief = state["brief"]
+        response = interrupt({
+            "gate": "plan_approval",
+            "objective": brief.objective,
+            "sub_questions": brief.sub_questions,
+            "evaluation_criteria": brief.evaluation_criteria,
+            "deliverable": brief.deliverable,
+            "task_count": len(plan.tasks),
+            "research_task_count": len(plan.research_tasks()),
+            "plan": plan.render(),
+            "rationale": plan.rationale,
+            "options": ["approve", "edit", "reject"],
+        })
+        return _apply_plan_decision(state, response)
 
     return plan_approval
+
+
+def _apply_plan_decision(state: WorkflowState, response: Any) -> dict:
+    """Turn a human decision on the plan into a state update.
+
+    ``edit`` accepts a replacement task list. It is validated as a ``TaskPlan`` like any other,
+    so a user-supplied plan cannot introduce a dependency cycle the generated ones are checked
+    for — the human is trusted to decide, not to bypass the invariants.
+    """
+    decision = _decision_of(response)
+    note = _note_of(response)
+
+    if decision == "reject":
+        return {
+            "plan_approved": False,
+            "awaiting": "",
+            "status": WorkflowStatus.ABORTED,
+            "abort_reason": f"Research plan rejected by the user. {note}".strip(),
+            "human_decisions": [{"gate": "plan_approval", "decision": "reject", "note": note}],
+            "trace": [_trace(AgentId.SYSTEM, "checkpoint", "plan_approval", "rejected by user")],
+        }
+
+    update: dict = {
+        "plan_approved": True,
+        "awaiting": "",
+        "status": WorkflowStatus.RESEARCHING,
+        "human_decisions": [{"gate": "plan_approval", "decision": decision, "note": note}],
+    }
+
+    if decision == "edit":
+        payload = response.get("edited_payload") if isinstance(response, dict) else None
+        tasks = (payload or {}).get("tasks") if isinstance(payload, dict) else None
+        if tasks:
+            from app.schemas.tasks import TaskPlan
+
+            try:
+                edited = TaskPlan(tasks=tasks, rationale=state["plan"].rationale,
+                                  revision=state["plan"].revision + 1)
+                update["plan"] = edited
+                update["task_status"] = {t.task_id: TaskStatus.PENDING for t in edited.tasks}
+                update["trace"] = [_trace(AgentId.SYSTEM, "checkpoint", "plan_approval",
+                                          f"edited to {len(edited.tasks)} tasks")]
+                return update
+            except Exception as e:  # noqa: BLE001
+                update["errors"] = [ErrorRecord(
+                    agent_id=AgentId.SYSTEM, node="plan_approval", kind="invalid_output",
+                    message=f"Edited plan was invalid, keeping the original: {e}"[:300],
+                    recovered=True, action_taken="kept_original_plan")]
+
+    update["trace"] = [_trace(AgentId.SYSTEM, "checkpoint", "plan_approval",
+                              f"{decision} by user")]
+    return update
+
+
+def _decision_of(response: Any) -> str:
+    """Normalise whatever the caller resumed with into approve / edit / reject.
+
+    Three shapes reach this: the dashboard sends a dict, tests send a bare string, and
+    ``HumanCheckpointResponse`` sends a ``HumanDecision`` enum. The enum is the one that bites —
+    ``HumanDecision`` subclasses ``str``, but ``str(HumanDecision.EDIT)`` renders as
+    ``'HumanDecision.EDIT'`` rather than ``'edit'``, so a naive ``str()`` silently produced an
+    unrecognised value and fell through to "approve". An edit or a rejection being read as an
+    approval is the worst possible direction for that bug, so ``.value`` is taken explicitly.
+    """
+    def _text(value: Any) -> str:
+        return str(getattr(value, "value", value)).strip().lower()
+
+    if response is True or response is None:
+        value = "approve"
+    elif response is False:
+        value = "reject"
+    elif isinstance(response, str):
+        value = _text(response)
+    elif isinstance(response, dict):
+        value = _text(response.get("decision", "approve"))
+    else:
+        value = _text(getattr(response, "decision", "approve"))
+    return value if value in {"approve", "edit", "reject"} else "approve"
+
+
+def _note_of(response: Any) -> str:
+    if isinstance(response, dict):
+        return str(response.get("note", ""))
+    return str(getattr(response, "note", "") or "")
+
+
+def make_final_review(deps: WorkflowDeps):
+    """§20 checkpoint 2 — the human sees the recommendation before the run is finalised.
+
+    Placed after the Writer and before ``finalise`` so the reviewer reads the actual deliverable
+    rather than a summary of it. Rejection here does not discard the report: the run completes
+    with the objection recorded, because a report the user disagreed with is still the artefact
+    the workflow produced and hiding it would lose the trace of what happened.
+    """
+    def final_review(state: WorkflowState) -> dict:
+        if not deps.human_in_the_loop:
+            return {
+                "awaiting": "",
+                "human_decisions": [{"gate": "final_review", "decision": "auto_approved",
+                                     "note": "Unattended run: human-in-the-loop disabled."}],
+                "trace": [_trace(AgentId.SYSTEM, "checkpoint", "final_review",
+                                 "auto-approved (unattended)")],
+            }
+
+        from langgraph.types import interrupt
+
+        report = state.get("report")
+        verdicts = state.get("critic_verdicts", [])
+        response = interrupt({
+            "gate": "final_review",
+            "title": report.title if report else "",
+            "recommendation": (report.recommendation.statement
+                               if report and report.recommendation else ""),
+            "confidence": (report.recommendation.confidence.value
+                           if report and report.recommendation else ""),
+            "key_findings": report.key_findings if report else [],
+            "limitations": report.risks_and_limitations if report else [],
+            "evidence_count": len(report.evidence_used) if report else 0,
+            "critic_approved": verdicts[-1].approved if verdicts else None,
+            "unresolved_objections": (
+                [p.issue for p in verdicts[-1].major_problems()]
+                if verdicts and not verdicts[-1].approved else []
+            ),
+            "markdown": report.to_markdown() if report else "",
+            "options": ["approve", "reject"],
+        })
+
+        decision = _decision_of(response)
+        note = _note_of(response)
+        update: dict = {
+            "awaiting": "",
+            "human_decisions": [{"gate": "final_review", "decision": decision, "note": note}],
+            "trace": [_trace(AgentId.SYSTEM, "checkpoint", "final_review", f"{decision} by user")],
+        }
+        if decision == "reject" and report is not None:
+            # Keep the report; record the disagreement inside it so the artefact is honest.
+            limitations = [*report.risks_and_limitations,
+                           f"The reviewer did not accept this recommendation. {note}".strip()]
+            update["report"] = report.model_copy(update={"risks_and_limitations": limitations})
+        return update
+
+    return final_review
 
 
 # --------------------------------------------------------------------------- #

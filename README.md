@@ -9,7 +9,7 @@ and hand you a report where every claim traces back to a source.**
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1C3C3C?style=for-the-badge)](https://langchain-ai.github.io/langgraph/)
 [![Providers](https://img.shields.io/badge/LLM-5_providers_·_failover-8957e5?style=for-the-badge)](#-measured-decisions-no-vibes)
 [![Postgres](https://img.shields.io/badge/Postgres-17-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
-[![Tests](https://img.shields.io/badge/tests-196_passing-success?style=for-the-badge)](tests/)
+[![Tests](https://img.shields.io/badge/tests-212_passing-success?style=for-the-badge)](tests/)
 
 <samp>Visibility Bots Innovation Lab · AI Summer Fellowship 2026 · Track 2: NLP & AI Agents · **Week 4**</samp>
 
@@ -638,6 +638,83 @@ zero lost updates**.
 
 ---
 
+## ⏸ Human checkpoints and the console
+
+```bash
+streamlit run app/main.py
+```
+
+**Not a chat app.** Weeks 1–3 of this fellowship were chat interfaces; §24 asks for
+observability — *"a simple visualisation is sufficient, the goal is observability, not
+animation"* — which is a different product. The layout is a live pipeline plus tabs onto the
+workflow state, so a reader can see which agent is running, what evidence exists, and why the
+Critic objected, without reading a log.
+
+### Checkpoint 1 fires before anything expensive runs
+
+A real paused run:
+
+```
+✅ Supervisor · analyse   39.2s
+✅ Supervisor · plan      68.1s
+⏸  Plan approval          ← waiting for a human
+○  Researchers            ← Evidence: 0
+○  Evidence gate  ○ Analyst  ○ Fact-Checker  ○ Critic  ○ Writer
+
+Budget: 2/50 model calls · 1,749 in / 1,523 out
+```
+
+**Two model calls spent, nothing researched.** That placement is the point: research is the
+expensive stage, so pausing *after* it would show the user a bill they cannot decline. The panel
+shows the objective, sub-questions, criteria and the full task plan, with approve / edit / reject.
+
+Rejecting aborts without researching. Editing accepts a replacement task list — validated as a
+`TaskPlan` like any other, so a human may *decide* but may not bypass the DAG invariants. An
+invalid edit keeps the original plan and records the reason.
+
+### Checkpoint 2 shows the deliverable, not a summary
+
+Placed after the Writer so the reviewer reads the actual report. Rejection **keeps** the report
+and records the objection inside it — discarding the artefact because the reviewer disagreed
+would destroy the evidence of the disagreement.
+
+### Unattended runs say so
+
+`human_in_the_loop` is off for the evaluation runner and the experiments, which cannot sit at a
+prompt. Both gates then auto-approve **and record that they did**:
+
+```json
+{"gate": "plan_approval", "decision": "auto_approved",
+ "note": "Unattended run: human-in-the-loop disabled."}
+```
+
+Silence here would make every unattended eval run score as *"approval respected"*, quietly
+inflating the §29 compliance metric to 100% on runs where no human was ever consulted.
+
+### Two Week 3 bugs designed out rather than rediscovered
+
+- **The session lives in `st.session_state`.** Streamlit re-runs the module top to bottom on
+  every interaction; a session rebuilt per rerun loses its checkpointer and the `interrupt()`
+  pause becomes unresumable.
+- **Errors are queued, never rendered immediately before a rerun.** In Week 3 an `st.error(...)`
+  followed by `st.rerun()` was wiped before it painted, so every failure looked like *"the agent
+  thinks, then nothing happens."* There's a check asserting the pattern never reappears.
+
+### Three bugs the live UI found
+
+| Symptom | Cause |
+|---|---|
+| Run button permanently disabled | Passing both `value=` and `key=` to a Streamlit widget — `session_state` wins after the first render and `value` is silently ignored |
+| Every pipeline stage showed a spinner at once | "Running" is only meaningful *relative* to the other stages; computing it per stage in isolation marked everything unreached as running |
+| `ValidationError: Input should be … instance of Task` — **showing a Task as the input** | State round-trips through the checkpointer, and a hot reload produces a second `Task` class. Pydantic compares by identity, so a valid task fails validation |
+
+The third is the interesting one: it only appears when a paused run is resumed after a module
+reload — a Streamlit edit, a Cloud redeploy, or a fresh worker. `TaskPlan` now coerces by data
+rather than by class identity, with a regression test that loads the module twice to reproduce
+genuinely distinct classes.
+
+---
+
 ## 🚀 Quick start
 
 ```bash
@@ -730,16 +807,16 @@ reported from memory is not done*.
 | **5** | Orchestration graph · routing · termination · persistence | 36/36 | ✅ |
 | **6** | Critic loop · detection-rate benchmark · false-positive control | 23/23 | ✅ |
 | **7** | Parallel fan-out · thread safety · Experiment 3 measured | 24/24 | ✅ |
-| 8 | Human checkpoints · dashboard · export | — | ⏳ |
+| **8** | Human checkpoints · workflow console · Markdown export | 29/29 | ✅ |
 | 9 | Automated tests | — | ⏳ |
 | 10 | 25 eval cases · 5 experiments · 10 adversarial | — | ⏳ |
 | 11 | Docs · security review · deploy | — | ⏳ |
 
 ```bash
-for p in 0 1 2 3 4 5 6 7; do python scripts/verify_phase$p.py; done
+for p in 0 1 2 3 4 5 6 7 8; do python scripts/verify_phase$p.py; done
 ```
 
-**Current: 222/222 acceptance checks · 196 tests passing.**
+**Current: 251/251 acceptance checks · 212 tests passing.**
 
 `python scripts/verify_phase4.py --live` adds 4 further checks that run a real research task
 against the API rather than mocks.

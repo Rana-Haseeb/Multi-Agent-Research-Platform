@@ -9,7 +9,7 @@ and hand you a report where every claim traces back to a source.**
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1C3C3C?style=for-the-badge)](https://langchain-ai.github.io/langgraph/)
 [![Providers](https://img.shields.io/badge/LLM-5_providers_·_failover-8957e5?style=for-the-badge)](#-measured-decisions-no-vibes)
 [![Postgres](https://img.shields.io/badge/Postgres-17-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
-[![Tests](https://img.shields.io/badge/tests-172_passing-success?style=for-the-badge)](tests/)
+[![Tests](https://img.shields.io/badge/tests-184_passing-success?style=for-the-badge)](tests/)
 
 <samp>Visibility Bots Innovation Lab · AI Summer Fellowship 2026 · Track 2: NLP & AI Agents · **Week 4**</samp>
 
@@ -517,6 +517,61 @@ Three things in that trace are worth more than the completion itself:
 
 ---
 
+## ⚔️ Measuring the Critic
+
+A Critic that rejects everything scores **100% detection** and is worthless — it burns two
+revision cycles on every run and teaches the Analyst nothing. So the benchmark's centrepiece is
+a deliberately **clean** analysis that the Critic must approve.
+
+```bash
+python eval/critic_bench.py
+```
+
+| | |
+|---|---|
+| **Detection rate** | **12 / 12** (1.0) |
+| **False-positive rate** | **0 / 2** (0.0) |
+| Rejections actionable | 1.0 |
+| Scored all six criteria | 14 / 14 |
+
+Six defect families are planted at the *analysis* level — fabricated citation, internal
+contradiction, overgeneralisation from one data point, vendor marketing stated as fact, a
+recommendation resting on an unresearched criterion, and a citation that doesn't support its
+claim. **Rejecting for the wrong reason doesn't count as a catch**, because the Analyst would
+then fix something that was never broken while the real defect survives.
+
+The scorer is calibrated in both directions, and tested:
+
+- an always-approving Critic must score **0** detection
+- an always-rejecting Critic must score **100%** false positives
+
+If either assertion failed, the detection rate would be unfalsifiable.
+
+### The control case found five defects — one of them in the system
+
+Getting the "clean" fixture actually clean took five corrections, each surfaced by the Critic:
+
+| # | What the Critic said | Verdict |
+|---|---|---|
+| 1 | An evaluation criterion was never addressed | **Fixture bug** — the brief asked for three, the analysis covered two |
+| 2 | "Offers built-in" overstated evidence saying "supports" | **Fixture bug** — wording tightened |
+| 3 | A claim about *cost* cited a *latency* benchmark | **Fixture bug** — I introduced it while fixing #1 |
+| 4 | A trade-off asserted a "steeper learning curve" with no evidence | **Fixture bug** — trade-offs are claims too |
+| 5 | "The analysis does not provide a recommendation" | 🔴 **Real system bug** |
+
+**#5 is the one that mattered.** The Analyst has no recommendation field and its prompt never
+asks for one — recommendations are the Writer's job. **The Critic was reviewing the Analyst
+against the Writer's contract**, so it would reject sound analyses on every run and burn both
+revision cycles achieving nothing. That almost certainly explains why the live workflow's Critic
+rejected all three cycles.
+
+The fix scopes the Critic's remit explicitly, and a regression test pins it.
+
+> A benchmark whose control case only ever confirms what you already believe isn't measuring
+> anything. This one found a bug in the system it was built to measure.
+
+---
+
 ## 🚀 Quick start
 
 ```bash
@@ -607,7 +662,7 @@ reported from memory is not done*.
 | **3** | 7 tools · permission boundaries · audit log | 23/23 | ✅ |
 | **4** | Six agents · context boundaries · single-agent baseline | 30/30 | ✅ |
 | **5** | Orchestration graph · routing · termination · persistence | 36/36 | ✅ |
-| 6 | Critic revision loop | — | ⏳ |
+| **6** | Critic loop · detection-rate benchmark · false-positive control | 23/23 | ✅ |
 | 7 | Parallel fan-out + measured speedup | — | ⏳ |
 | 8 | Human checkpoints · dashboard · export | — | ⏳ |
 | 9 | Automated tests | — | ⏳ |
@@ -615,10 +670,10 @@ reported from memory is not done*.
 | 11 | Docs · security review · deploy | — | ⏳ |
 
 ```bash
-for p in 0 1 2 3 4 5; do python scripts/verify_phase$p.py; done
+for p in 0 1 2 3 4 5 6; do python scripts/verify_phase$p.py; done
 ```
 
-**Current: 175/175 acceptance checks · 172 tests passing.**
+**Current: 198/198 acceptance checks · 184 tests passing.**
 
 `python scripts/verify_phase4.py --live` adds 4 further checks that run a real research task
 against the API rather than mocks.

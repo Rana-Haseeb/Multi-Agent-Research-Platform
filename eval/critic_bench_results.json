@@ -1,0 +1,259 @@
+{
+  "summary": {
+    "scenarios_run": 14,
+    "defective_scenarios": 12,
+    "detected": 12,
+    "detection_rate": 1.0,
+    "clean_scenarios": 2,
+    "false_positives": 0,
+    "false_positive_rate": 0.0,
+    "rejections_actionable": 1.0,
+    "runs_scoring_all_six_criteria": 14
+  },
+  "rows": [
+    {
+      "scenario": "clean",
+      "ok": true,
+      "should_reject": false,
+      "rejected": false,
+      "correct": true,
+      "n_problems": 0,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": []
+    },
+    {
+      "scenario": "clean",
+      "ok": true,
+      "should_reject": false,
+      "rejected": false,
+      "correct": true,
+      "n_problems": 0,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": []
+    },
+    {
+      "scenario": "fabricated_citation",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 4,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[unsupported_claims/major] Conclusion C3 (CrewAI has the strongest community support of any framework) is not backed by any evidence; citation E999",
+        "[evidence_coverage/major] Conclusion C3 (CrewAI community support) cites a non-existent source, resulting in zero evidence coverage for that claim",
+        "[logical_consistency/minor] Duplicate label 'C3' used for two different conclusions (cost of ownership and community support), causing confusion.",
+        "[unsupported_claims/major] Fabricated citations: E999."
+      ]
+    },
+    {
+      "scenario": "fabricated_citation",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 3,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[evidence_coverage/major] Lack of evidence for total cost of ownership",
+        "[unsupported_claims/major] Citation E999 is fabricated",
+        "[unsupported_claims/major] Fabricated citations: E999."
+      ]
+    },
+    {
+      "scenario": "contradiction",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 3,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[logical_consistency/major] Contradictory conclusions about LangGraph's human-in-the-loop support: C2 states LangGraph supports human-in-the-loop vi",
+        "[unsupported_claims/major] Conclusion C3 (second instance) asserts that LangGraph provides no mechanism for pausing a workflow for human approval, ",
+        "[completeness/minor] Duplicate labeling of conclusions as C3 creates ambiguity and omits a distinct identifier for the cost-of-ownership conc"
+      ]
+    },
+    {
+      "scenario": "contradiction",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 2,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[completeness/major] Total cost of ownership not assessed",
+        "[logical_consistency/major] Contradictory conclusions about human-in-the-loop support in LangGraph"
+      ]
+    },
+    {
+      "scenario": "overgeneralisation",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 2,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[unsupported_claims/major] The conclusion that \"CrewAI is the fastest agent framework available\" is not supported by the cited evidence. E105 only ",
+        "[logical_consistency/minor] Duplicate labeling of conclusions as C3 creates confusion and suggests a logical inconsistency in the document structure"
+      ]
+    },
+    {
+      "scenario": "overgeneralisation",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 3,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[unsupported_claims/major] Conclusion C3 (CrewAI is the fastest agent framework available) is not supported by the cited evidence; E105 only provid",
+        "[relevance/major] The claim about CrewAI being the fastest agent framework is irrelevant to the evaluation criteria (state management, hum",
+        "[logical_consistency/minor] Duplicate label \"C3\" is used for two different conclusions, causing confusion and breaking the logical structure of the "
+      ]
+    },
+    {
+      "scenario": "vendor_claim_as_fact",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 3,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[unsupported_claims/major] Conclusion C3 (MAJOR) claims \"Teams building with CrewAI are 10x more productive\" based solely on a marketing source (E1",
+        "[evidence_coverage/major] The productivity claim (C3 MAJOR) is not backed by strong evidence; the cited source is a marketing claim with low confi",
+        "[logical_consistency/minor] Duplicate conclusion identifier \"C3\" is used for two different statements (cost assessment and productivity claim), caus"
+      ]
+    },
+    {
+      "scenario": "vendor_claim_as_fact",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 4,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[unsupported_claims/major] Conclusion C3 (Teams building with CrewAI are 10x more productive) is based on a low\u2011confidence marketing claim (E104) a",
+        "[relevance/major] The productivity claim is not part of the requested evaluation criteria (state management, human\u2011in\u2011the\u2011loop, total cost",
+        "[evidence_coverage/major] Conclusion C3 (productivity claim) cites a source classified as a marketing claim with low confidence, which does not ad",
+        "[logical_consistency/minor] Duplicate label \"C3\" is used for two different conclusions, causing confusion and inconsistency in the analysis structur"
+      ]
+    },
+    {
+      "scenario": "unresearched_criterion",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 5,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[evidence_coverage/major] The analysis makes a claim about total cost of ownership (C3) despite having no cited evidence for cost; the only citati",
+        "[logical_consistency/major] Contradictory statements: one conclusion (C3 low) says cost cannot be compared, while another (C3 high) asserts LangGrap",
+        "[completeness/major] The evaluation criterion 'total cost of ownership' is not addressed with evidence, yet a recommendation is made based on",
+        "[unsupported_claims/major] The claim that LangGraph has the lowest total cost of ownership is unsupported by any evidence; the cited source does no",
+        "[contradictions/major] The analysis states both that cost cannot be assessed and that LangGraph is cheapest, directly contradicting itself."
+      ]
+    },
+    {
+      "scenario": "unresearched_criterion",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 2,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[logical_consistency/major] The summary and conclusions directly contradict each other regarding total cost of ownership: one conclusion states TCO ",
+        "[unsupported_claims/major] The conclusion asserting LangGraph has the lowest total cost of ownership cites E101, which describes typed state channe"
+      ]
+    },
+    {
+      "scenario": "irrelevant_citation",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 3,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[unsupported_claims/major] The conclusion that \"CrewAI has better documentation than LangGraph\" is not supported by any cited evidence; the citatio",
+        "[evidence_coverage/major] The citation for the above claim is mismatched (E101 does not support the claim), indicating insufficient evidence cover",
+        "[logical_consistency/minor] Duplicate conclusion identifiers (both labeled C3) cause confusion and break logical traceability."
+      ]
+    },
+    {
+      "scenario": "irrelevant_citation",
+      "ok": true,
+      "should_reject": true,
+      "rejected": true,
+      "correct": true,
+      "n_problems": 2,
+      "criteria_scored": 6,
+      "all_six_criteria_scored": true,
+      "actionable": true,
+      "problems": [
+        "[unsupported_claims/major] The second conclusion labeled [C3] ('CrewAI has better documentation than LangGraph') is entirely unsupported by the cit",
+        "[logical_consistency/minor] Duplicate identifier [C3] is used for two distinct conclusions (the TCO gap conclusion and the documentation quality con"
+      ]
+    }
+  ],
+  "usage": {
+    "run_id": "critic-bench",
+    "total_calls": 53,
+    "billable_calls": 28,
+    "refused_calls": 25,
+    "input_tokens": 32303,
+    "output_tokens": 13176,
+    "cost_usd": 0.0,
+    "wall_seconds": 209.61,
+    "by_agent": {
+      "fact_checker": {
+        "calls": 32,
+        "input_tokens": 9102,
+        "output_tokens": 3455,
+        "seconds": 132.40771219989983,
+        "cost_usd": 0.0,
+        "failures": 18
+      },
+      "critic": {
+        "calls": 21,
+        "input_tokens": 23201,
+        "output_tokens": 9721,
+        "seconds": 77.19520369987004,
+        "cost_usd": 0.0,
+        "failures": 7
+      }
+    }
+  }
+}

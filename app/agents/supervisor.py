@@ -148,17 +148,36 @@ def evidence_gate(
     evidence: list[Evidence],
     handoffs: list[ResearchHandoff],
     research_round: int,
+    questions: list[str] | None = None,
 ) -> GateDecision:
     """Is there enough evidence to analyse? Plain code, no model call.
 
+    ``questions`` must be the questions **actually assigned to research tasks**, not every
+    sub-question in the brief. The first end-to-end run failed because of this: the Supervisor
+    decomposed a request into ten sub-questions, the plan was capped at four research tasks, and
+    the gate then scored coverage against all ten. Six questions nobody had been assigned could
+    never be covered, so the gate re-planned on every pass and the run burned its entire call
+    budget without reaching the Analyst.
+
+    Scoring against unassigned questions is not conservatism, it is a guaranteed false negative.
+    Coverage of the brief as a whole is a separate concern, reported to the Critic as
+    completeness rather than used to gate progress here.
+
     Coverage is confidence-weighted and ignores assumptions, so three low-confidence guesses do
-    not clear the bar that one solid finding would. When coverage is thin the workflow re-plans —
-    but only while ``research_round`` is under the cap, after which it proceeds with the gaps
+    not clear the bar one solid finding would. When coverage is thin the workflow re-plans — but
+    only while ``research_round`` is under the cap, after which it proceeds with the gaps
     recorded rather than looping. §22 requires termination even when evidence never arrives.
     """
+    scored = questions if questions is not None else brief.sub_questions
     index = EvidenceIndex(items=evidence)
-    coverage = index.coverage(brief.sub_questions)
-    unresolved = index.unresolved(brief.sub_questions)
+    coverage = index.coverage(scored)
+    unresolved = index.unresolved(scored)
+
+    if not scored:
+        # No research task carried a question. Nothing to gate on; let the Analyst and Critic
+        # report the emptiness rather than looping here.
+        return GateDecision(proceed=True, reason="No research questions were assigned.",
+                            unresolved_questions=[], coverage={})
 
     if not evidence:
         if research_round < settings.max_research_rounds:
@@ -174,7 +193,7 @@ def evidence_gate(
     if unresolved and research_round < settings.max_research_rounds:
         return GateDecision(
             proceed=False,
-            reason=f"{len(unresolved)} of {len(brief.sub_questions)} sub-questions have thin "
+            reason=f"{len(unresolved)} of {len(scored)} assigned question(s) have thin "
                    f"coverage; running one more research round.",
             unresolved_questions=unresolved, coverage=coverage,
         )

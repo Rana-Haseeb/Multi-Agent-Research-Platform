@@ -46,9 +46,14 @@ def _normalise(text: str) -> str:
 # --------------------------------------------------------------------------- #
 # 1. search_corpus
 # --------------------------------------------------------------------------- #
+# Characters of passage text returned per hit. Search results re-enter the researcher's message
+# history on every subsequent call, so this cap bounds context growth across the tool loop.
+SEARCH_SNIPPET_CHARS = 700
+
+
 class SearchInput(BaseModel):
     query: str = Field(min_length=2, description="Search terms. Use distinctive product names.")
-    top_k: int = Field(default=5, ge=1, le=10)
+    top_k: int = Field(default=4, ge=1, le=8)
     domain: str | None = Field(
         default=None,
         description="Optional filter: frameworks, cloud, or coding_assistants",
@@ -101,7 +106,10 @@ def search_corpus(args: SearchInput, ctx: ToolContext) -> SearchOutput:
         hits=[
             SearchHit(
                 chunk_id=h.chunk_id, doc_id=h.doc_id, doc_title=h.doc_title, heading=h.heading,
-                text=h.text, source_type=h.source_type, publisher=h.publisher,
+                text=(h.text if len(h.text) <= SEARCH_SNIPPET_CHARS
+                      else h.text[:SEARCH_SNIPPET_CHARS].rstrip() + " …[truncated: use "
+                           "extract_document for the full section]"),
+                source_type=h.source_type, publisher=h.publisher,
                 published=h.published, reliability=h.reliability, score=h.score,
             )
             for h in hits

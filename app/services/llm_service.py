@@ -35,9 +35,15 @@ from app.services.usage import UsageTracker
 
 T = TypeVar("T", bound=BaseModel)
 
-# Substrings that indicate a transient, worth-retrying failure.
-_TRANSIENT = ("429", "rate limit", "rate-limit", "timeout", "timed out", "temporarily",
-              "overloaded", "502", "503", "504")
+# Failures worth retrying **on the same model**: a blip that a short wait may clear.
+_RETRY_SAME = ("timeout", "timed out", "temporarily", "overloaded", "502", "503", "504")
+
+# Failures where retrying the same model is guaranteed waste. A per-minute token quota does not
+# refill in the 1.5-4.5s our backoff waits, so three retries buy nothing and cost ~10-24s each
+# time. Measured: with retry-on-429 enabled, every researcher call burned a doubled call count
+# and up to 24s before falling through to a model that answered immediately. These skip straight
+# to the next (provider, model) in the chain.
+_SKIP_TO_NEXT = ("429", "rate limit", "rate-limit", "quota", "too many requests")
 
 
 class LLMError(RuntimeError):
@@ -53,8 +59,22 @@ def _friendly(exc: Exception) -> LLMError:
         return LLMError("The AI provider rejected the API key. Check your credentials.")
     if "403" in msg or "permission" in msg:
         return LLMError("The AI provider denied access to this model (region/permission).")
-    if "429" in msg or "rate" in msg or "quota" in msg:
-        return LLMError("AI rate limit reached. Falling back to the next provider.")
+    # A daily token quota does not refill within a run, so it is reported distinctly from a
+    # per-minute limit. Waiting is pointless; the operator needs to know to add capacity.
+    if "tokens per day" in msg or "tpd" in msg:
+        return LLMError(
+            "Daily token quota exhausted for this model. Falling back to the next provider; "
+            "add another provider key or upgrade the tier to continue."
+        )
+    # NOTE: match "rate limit", never the bare substring "rate" — "rate" is inside "generate",
+    # so the looser check silently reclassified every structured-output failure ("failed to
+    # generate…") as a rate limit, sending real schema errors down the throttling path.
+    if "429" in msg or "rate limit" in msg or "rate_limit" in msg or "quota" in msg:
+        wait = retry_after_seconds(str(exc))
+        suffix = f" Provider asks for {wait:.0f}s." if wait else ""
+        err = LLMError(f"AI rate limit reached. Falling back to the next provider.{suffix}")
+        err.retry_after = wait          # type: ignore[attr-defined]
+        return err
     if "timeout" in msg or "timed out" in msg:
         return LLMError("The AI request timed out.")
     if "connection" in msg or "network" in msg or "getaddrinfo" in msg:
@@ -64,6 +84,29 @@ def _friendly(exc: Exception) -> LLMError:
     if "did not match sc" in msg or "failed to call a function" in msg:
         return LLMError("The model could not produce the required structured output.")
     return LLMError("The AI service failed to produce a valid response.")
+
+
+_RETRY_AFTER = re.compile(
+    r"(?:retry|try again) in\s*(?:(\d+)m)?\s*([\d.]+)s", re.IGNORECASE
+)
+
+
+def retry_after_seconds(message: str) -> float | None:
+    """Seconds the provider asked us to wait, parsed from its own 429 text.
+
+    Providers state the exact wait — "Please retry in 18.505089073s", "Please try again in
+    1h15m24.768s" — and honouring it beats guessing. A fixed backoff is either too short (the
+    call fails again) or too long (wall clock wasted); measured here, one provider wanted 18.5s
+    while the configured guess was 6s, so every wait was wasted and the call failed anyway.
+
+    Returns None when no delay is stated. Hours are deliberately not parsed: a wait measured in
+    hours is a daily quota, which no run should sit through.
+    """
+    m = _RETRY_AFTER.search(message)
+    if not m:
+        return None
+    minutes = int(m.group(1) or 0)
+    return minutes * 60 + float(m.group(2))
 
 
 def _extract_json(text: str) -> str:
@@ -148,7 +191,12 @@ class LLMService:
 
     # ------------------------------------------------------- retry & fallback
     def _run_with_retry(self, fn):
-        """Retry one (provider, model) on transient errors; raise a user-safe error otherwise."""
+        """Retry one (provider, model) on transient errors; raise a user-safe error otherwise.
+
+        Rate limits are deliberately **not** retried here. They are a property of the model's
+        per-minute quota, not a blip, so the only useful response is to move on to the next model
+        in the chain — which is what raising immediately causes :meth:`_try_chain` to do.
+        """
         attempts = settings.max_retries_per_call + 1
         last: Exception | None = None
         for i in range(attempts):
@@ -158,8 +206,11 @@ class LLMService:
                 raise  # our own guard failures are already user-safe; don't retry
             except Exception as e:  # noqa: BLE001
                 last = e
-                if any(t in str(e).lower() for t in _TRANSIENT) and i < attempts - 1:
-                    time.sleep(1.5 * (i + 1))  # linear backoff
+                text = str(e).lower()
+                if any(t in text for t in _SKIP_TO_NEXT):
+                    raise _friendly(e) from e          # straight to the next model
+                if any(t in text for t in _RETRY_SAME) and i < attempts - 1:
+                    time.sleep(1.5 * (i + 1))          # linear backoff
                     continue
                 raise _friendly(e) from e
         raise _friendly(last or LLMError("unknown error"))
@@ -174,26 +225,59 @@ class LLMService:
             self.usage.check_budget()
 
         last: LLMError | None = None
-        for provider, model in self._chain():
-            t0 = time.perf_counter()
-            try:
-                result, tin, tout = per_pair(provider, model)
-            except LLMError as e:
-                last = e
+        # Two passes. If the first exhausts the chain and *every* failure was a rate limit, the
+        # models are healthy and merely throttled — a short wait restores the fast, high-quality
+        # models. Measured: without this, a throttled run fell through to a slow fallback
+        # provider at ~29s per call and a full workflow blew its wall-clock budget at 711s.
+        # Waiting for the preferred model beats succeeding slowly on a worse one.
+        for attempt in range(2):
+            all_rate_limited = True
+            waits: list[float] = []
+            for provider, model in self._chain():
+                t0 = time.perf_counter()
+                try:
+                    result, tin, tout = per_pair(provider, model)
+                except LLMError as e:
+                    last = e
+                    text = str(e).lower()
+                    # Only a *per-minute* limit is worth waiting out. A daily quota will not
+                    # refill in six seconds, so waiting on it just burns wall clock.
+                    minute_limited = (
+                        ("rate limit" in text or "429" in text)
+                        and "daily token quota" not in text
+                    )
+                    if not minute_limited:
+                        all_rate_limited = False
+                    else:
+                        asked_for = getattr(e, "retry_after", None)
+                        if asked_for:
+                            waits.append(float(asked_for))
+                    if self.usage:
+                        self.usage.record(
+                            agent_id=self.agent_id, provider=provider, model=model,
+                            seconds=time.perf_counter() - t0, ok=False, error=str(e),
+                        )
+                    continue
+                self.last_used_model, self.last_used_provider = model, provider
                 if self.usage:
                     self.usage.record(
                         agent_id=self.agent_id, provider=provider, model=model,
-                        seconds=time.perf_counter() - t0, ok=False, error=str(e),
+                        input_tokens=tin, output_tokens=tout,
+                        seconds=time.perf_counter() - t0, ok=True,
                     )
-                continue
-            self.last_used_model, self.last_used_provider = model, provider
-            if self.usage:
-                self.usage.record(
-                    agent_id=self.agent_id, provider=provider, model=model,
-                    input_tokens=tin, output_tokens=tout,
-                    seconds=time.perf_counter() - t0, ok=True,
-                )
-            return result
+                return result
+
+            if attempt == 0 and all_rate_limited:
+                # Honour the longest wait any provider actually asked for, capped so a daily
+                # quota (which reports minutes or hours) never stalls a run.
+                asked = max(waits) if waits else 0.0
+                pause = min(max(asked, settings.rate_limit_backoff_seconds),
+                            settings.max_rate_limit_wait_seconds)
+                if pause > 0:
+                    time.sleep(pause)
+                    continue
+            break
+
         raise last or LLMError("All configured providers and models failed.")
 
     # ------------------------------------------------------------------- calls

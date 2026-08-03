@@ -1,0 +1,75 @@
+{
+  "run_id": "71582d198755",
+  "status": "completed",
+  "wall_seconds": 370.83,
+  "agent_calls": 43,
+  "attempted_calls": 98,
+  "refused_calls": 55,
+  "input_tokens": 103035,
+  "output_tokens": 18523,
+  "cost_usd": 0.0,
+  "by_agent": {
+    "supervisor": {
+      "calls": 3,
+      "input_tokens": 3427,
+      "output_tokens": 2572,
+      "seconds": 42.64561940002022,
+      "cost_usd": 0.0,
+      "failures": 0
+    },
+    "researcher": {
+      "calls": 77,
+      "input_tokens": 66526,
+      "output_tokens": 6687,
+      "seconds": 196.27183139976114,
+      "cost_usd": 0.0,
+      "failures": 47
+    },
+    "analyst": {
+      "calls": 10,
+      "input_tokens": 11518,
+      "output_tokens": 5378,
+      "seconds": 109.93925130000571,
+      "cost_usd": 0.0,
+      "failures": 7
+    },
+    "fact_checker": {
+      "calls": 3,
+      "input_tokens": 5846,
+      "output_tokens": 728,
+      "seconds": 3.5834864000207745,
+      "cost_usd": 0.0,
+      "failures": 0
+    },
+    "critic": {
+      "calls": 4,
+      "input_tokens": 11613,
+      "output_tokens": 2510,
+      "seconds": 7.025911900040228,
+      "cost_usd": 0.0,
+      "failures": 1
+    },
+    "writer": {
+      "calls": 1,
+      "input_tokens": 4105,
+      "output_tokens": 648,
+      "seconds": 2.310492999968119,
+      "cost_usd": 0.0,
+      "failures": 0
+    }
+  },
+  "tasks": 6,
+  "research_tasks": 3,
+  "evidence_count": 15,
+  "revision_count": 2,
+  "research_rounds": 2,
+  "critic_approved": false,
+  "critic_problems": 15,
+  "fabricated_citations": [
+    "E108"
+  ],
+  "errors": [],
+  "trace_events": 115,
+  "has_report": true,
+  "abort_reason": ""
+}

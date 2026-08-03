@@ -31,6 +31,10 @@ from app.tools import ToolContext, ToolError, ToolPermissionError, openai_tool_s
 
 T = TypeVar("T", bound=BaseModel)
 
+# Messages retained after the system+user pair inside a tool loop. Bounds context growth
+# across iterations; see tool_loop.trim for why this is safe for the researcher.
+KEEP_MESSAGES = 4
+
 
 @dataclass
 class AgentOutcome(Generic[T]):
@@ -136,7 +140,7 @@ def tool_loop(
     ctx: ToolContext,
     usage: UsageTracker | None = None,
     task_id: str = "",
-    max_iterations: int = 6,
+    max_iterations: int = 4,
 ) -> tuple[list[str], list[TraceEvent], ErrorRecord | None]:
     """Let an agent call its permitted tools until it stops or hits the iteration cap.
 
@@ -158,10 +162,34 @@ def tool_loop(
     transcript: list[str] = []
     trace: list[TraceEvent] = []
 
+    def trim(msgs: list[Any]) -> list[Any]:
+        """Keep the instructions and the most recent exchange; drop older tool output.
+
+        Tool results are re-sent on every iteration, so an unbounded history grows quadratically
+        in tokens. Measured on a live run: a researcher's fourth call carried ~10,000 input
+        tokens — close to the entire per-minute token allowance of a free-tier model — which is
+        what was triggering the rate limits, not the request count (922 of 1,000 daily requests
+        were still available at the time).
+
+        Dropping old tool output is safe *here* because the researcher has already committed
+        anything worth keeping to the evidence store via ``store_evidence``. The full sequence
+        survives in ``transcript`` for the summary call and in the trace for auditing; only the
+        model's working context is trimmed.
+        """
+        if len(msgs) <= 1 + KEEP_MESSAGES:
+            return msgs
+        head, tail = msgs[:2], msgs[2:][-KEEP_MESSAGES:]
+        # An orphaned ToolMessage (its AIMessage tool_call was trimmed away) is rejected by the
+        # API, so drop leading tool results until the window starts on a clean boundary.
+        while tail and isinstance(tail[0], ToolMessage):
+            tail = tail[1:]
+        return head + tail
+
     for iteration in range(max_iterations):
         try:
             if usage:
                 usage.check_budget()
+            messages = trim(messages)
             reply = llm.invoke_tools(messages, schemas)
         except Exception as e:  # noqa: BLE001
             kind = classify_failure(e)
@@ -189,7 +217,7 @@ def tool_loop(
                 ok = False
             elapsed = time.perf_counter() - started
 
-            messages.append(ToolMessage(content=payload[:4000], tool_call_id=call_id))
+            messages.append(ToolMessage(content=payload[:2200], tool_call_id=call_id))
             transcript.append(f"{name}({args}) -> {payload[:600]}")
             trace.append(TraceEvent(
                 agent_id=agent_id, event="tool_call", node=node, task_id=task_id,

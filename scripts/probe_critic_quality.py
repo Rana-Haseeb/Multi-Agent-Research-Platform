@@ -139,7 +139,12 @@ def run(make, model: str) -> dict:
 
 
 def main() -> int:
-    cfg = PROVIDERS["groq"]
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--provider", default="groq")
+    args = ap.parse_args()
+    cfg = PROVIDERS[args.provider]
     key = os.getenv(cfg.api_key_env)
     if not key:
         print(f"No {cfg.api_key_env} set."); return 1
@@ -150,7 +155,7 @@ def main() -> int:
         return ChatOpenAI(model=model, api_key=key, base_url=cfg.base_url,
                           temperature=0, max_tokens=2048, timeout=90, max_retries=0)
 
-    models = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    models = cfg.probes()
     runs = 2  # temperature=0 is not fully deterministic on hosted inference
 
     print(f"Six planted defects. {runs} runs per model.\n")
@@ -184,7 +189,7 @@ def main() -> int:
         print(f"  {model:<26} {avg:.1f}/6 defects   rejected {rej}/{len(rows)}   {sec:.2f}s avg")
 
     prev = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else {}
-    prev["groq_critic_quality"] = results
+    prev[f"{args.provider}_critic_quality"] = results
     OUT.write_text(json.dumps(prev, indent=2), encoding="utf-8")
     print(f"\nSaved -> {OUT.relative_to(ROOT)}")
     return 0

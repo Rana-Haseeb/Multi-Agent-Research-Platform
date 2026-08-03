@@ -331,5 +331,193 @@
       "found": 0,
       "seconds": 0.65
     }
+  ],
+  "google_planning_quality": [
+    {
+      "model": "gemini-2.5-pro",
+      "vague": {
+        "ok": false,
+        "seconds": 3.45,
+        "error": "Error code: 429 - [{'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more",
+        "points": 0
+      },
+      "clear": {
+        "ok": false,
+        "seconds": 0.23,
+        "error": "Error code: 429 - [{'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more",
+        "points": 0
+      },
+      "total": 0
+    },
+    {
+      "model": "gemini-2.5-flash",
+      "vague": {
+        "ok": false,
+        "seconds": 0.61,
+        "error": "Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update",
+        "points": 0
+      },
+      "clear": {
+        "ok": false,
+        "seconds": 0.32,
+        "error": "Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update",
+        "points": 0
+      },
+      "total": 0
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "vague": {
+        "ok": true,
+        "seconds": 7.83,
+        "tasks": 5,
+        "withheld_plan": false,
+        "n_tasks_ok": true,
+        "deps_ok": true,
+        "agents_ok": true,
+        "ambig_ok": false,
+        "asked_questions": true,
+        "n_subq": 4,
+        "n_criteria": 4,
+        "points": 4
+      },
+      "clear": {
+        "ok": true,
+        "seconds": 6.54,
+        "tasks": 6,
+        "withheld_plan": false,
+        "n_tasks_ok": true,
+        "deps_ok": true,
+        "agents_ok": true,
+        "ambig_ok": true,
+        "asked_questions": true,
+        "n_subq": 5,
+        "n_criteria": 4,
+        "points": 5
+      },
+      "total": 9
+    },
+    {
+      "model": "gemini-2.5-flash-lite",
+      "vague": {
+        "ok": false,
+        "seconds": 0.3,
+        "error": "Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash-lite is no longer available to new users. Please u",
+        "points": 0
+      },
+      "clear": {
+        "ok": false,
+        "seconds": 0.59,
+        "error": "Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash-lite is no longer available to new users. Please u",
+        "points": 0
+      },
+      "total": 0
+    },
+    {
+      "model": "gemini-2.0-flash",
+      "vague": {
+        "ok": false,
+        "seconds": 0.23,
+        "error": "Error code: 429 - [{'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more",
+        "points": 0
+      },
+      "clear": {
+        "ok": false,
+        "seconds": 0.54,
+        "error": "Error code: 429 - [{'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more",
+        "points": 0
+      },
+      "total": 0
+    }
+  ],
+  "google_critic_quality": [
+    {
+      "model": "gemini-3.5-flash",
+      "run": 1,
+      "ok": true,
+      "seconds": 7.68,
+      "approved": false,
+      "n_problems": 6,
+      "hits": {
+        "D1_unsupported": true,
+        "D2_fabricated": true,
+        "D3_contradiction": true,
+        "D4_overgeneral": true,
+        "D5_irrelevant": true,
+        "D6_missing": true
+      },
+      "found": 6,
+      "rejected_correctly": true
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "run": 2,
+      "ok": true,
+      "seconds": 5.32,
+      "approved": false,
+      "n_problems": 6,
+      "hits": {
+        "D1_unsupported": true,
+        "D2_fabricated": true,
+        "D3_contradiction": true,
+        "D4_overgeneral": true,
+        "D5_irrelevant": true,
+        "D6_missing": true
+      },
+      "found": 6,
+      "rejected_correctly": true
+    },
+    {
+      "model": "gemini-3.6-flash",
+      "run": 1,
+      "ok": true,
+      "seconds": 22.43,
+      "approved": false,
+      "n_problems": 6,
+      "hits": {
+        "D1_unsupported": true,
+        "D2_fabricated": true,
+        "D3_contradiction": true,
+        "D4_overgeneral": true,
+        "D5_irrelevant": true,
+        "D6_missing": true
+      },
+      "found": 6,
+      "rejected_correctly": true
+    },
+    {
+      "model": "gemini-3.6-flash",
+      "run": 2,
+      "ok": true,
+      "seconds": 31.17,
+      "approved": false,
+      "n_problems": 6,
+      "hits": {
+        "D1_unsupported": true,
+        "D2_fabricated": true,
+        "D3_contradiction": true,
+        "D4_overgeneral": true,
+        "D5_irrelevant": true,
+        "D6_missing": true
+      },
+      "found": 6,
+      "rejected_correctly": true
+    },
+    {
+      "model": "gemini-2.0-flash",
+      "run": 1,
+      "ok": false,
+      "error": "Error code: 403 - [{'error': {'code': 403, 'message': 'The caller does not have permission', 'status': 'PERMISSION_DENIE",
+      "found": 0,
+      "seconds": 0.21
+    },
+    {
+      "model": "gemini-2.0-flash",
+      "run": 2,
+      "ok": false,
+      "error": "Error code: 429 - [{'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billi",
+      "found": 0,
+      "seconds": 0.56
+    }
   ]
 }

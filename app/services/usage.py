@@ -79,7 +79,27 @@ class UsageTracker:
     # ----------------------------------------------------------------- totals
     @property
     def total_calls(self) -> int:
+        """Every recorded attempt, successful or not. Used for reporting."""
         return len(self.calls)
+
+    @property
+    def billable_calls(self) -> int:
+        """Attempts that actually reached a model.
+
+        A provider that refuses a request on a rate limit consumes no tokens and produces no
+        output — it is a routing event, not a model call. Counting refusals against the run's
+        call budget made the circuit breaker fire on a healthy run: an end-to-end test tripped
+        the cap at 50 "calls" of which roughly half were instant 429s that cost nothing.
+
+        ``total_calls`` still counts everything, because the *reporting* question ("how many
+        attempts did this run make?") and the *budget* question ("how much work did it actually
+        do?") are different questions.
+        """
+        return sum(1 for c in self.calls if c.ok or c.input_tokens or c.output_tokens)
+
+    @property
+    def refused_calls(self) -> int:
+        return self.total_calls - self.billable_calls
 
     @property
     def total_cost_usd(self) -> float:
@@ -118,6 +138,8 @@ class UsageTracker:
         return {
             "run_id": self.run_id,
             "total_calls": self.total_calls,
+            "billable_calls": self.billable_calls,
+            "refused_calls": self.refused_calls,
             "input_tokens": self.total_input_tokens,
             "output_tokens": self.total_output_tokens,
             "cost_usd": round(self.total_cost_usd, 6),
@@ -128,10 +150,11 @@ class UsageTracker:
     # ------------------------------------------------------------ circuit break
     def check_budget(self) -> None:
         """Raise :class:`BudgetExceeded` if this run has gone past any ceiling."""
-        if self.total_calls >= settings.max_agent_calls_per_run:
+        if self.billable_calls >= settings.max_agent_calls_per_run:
             raise BudgetExceeded(
                 f"Run exceeded {settings.max_agent_calls_per_run} model calls "
-                f"({self.total_calls}). Stopping to prevent a runaway loop."
+                f"({self.billable_calls} billable of {self.total_calls} attempted). "
+                f"Stopping to prevent a runaway loop."
             )
         if self.elapsed_seconds >= settings.max_run_seconds:
             raise BudgetExceeded(

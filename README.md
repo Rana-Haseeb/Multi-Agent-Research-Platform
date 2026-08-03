@@ -9,7 +9,7 @@ and hand you a report where every claim traces back to a source.**
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1C3C3C?style=for-the-badge)](https://langchain-ai.github.io/langgraph/)
 [![Providers](https://img.shields.io/badge/LLM-5_providers_·_failover-8957e5?style=for-the-badge)](#-measured-decisions-no-vibes)
 [![Postgres](https://img.shields.io/badge/Postgres-17-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
-[![Tests](https://img.shields.io/badge/tests-143_passing-success?style=for-the-badge)](tests/)
+[![Tests](https://img.shields.io/badge/tests-172_passing-success?style=for-the-badge)](tests/)
 
 <samp>Visibility Bots Innovation Lab · AI Summer Fellowship 2026 · Track 2: NLP & AI Agents · **Week 4**</samp>
 
@@ -425,6 +425,98 @@ erase the measurement.
 
 ---
 
+## 🔀 Orchestration
+
+The graph is twelve nodes. **Every routing decision is a pure function of state** — not one of
+them calls a model. That is deliberate: a router that asks an LLM "what should happen next?"
+cannot be unit-tested, cannot be proven to terminate, and fails differently on every run.
+
+### Why it always terminates
+
+Three monotonically increasing counters, each compared in `routing.py`:
+
+| Counter | Bounds | Cap |
+|---|---|---|
+| `revision_count` | the Critic ↔ Analyst loop | 2 |
+| `research_round` | re-planning when evidence is thin | 2 |
+| `billable_calls` | everything else | 50 |
+
+Because each only increases and each comparison routes **forward** when its cap is met, no cycle
+can repeat indefinitely. There's a test that scripts a Critic which rejects *ten times in a row*
+and asserts the run still completes, still produces a report, and stops at exactly the cap.
+
+A prompt cannot make that guarantee. A comparison can.
+
+### Failure is a return value, not an exception
+
+Agents return an `AgentOutcome`; nodes turn a failed one into an `ErrorRecord` on state. A node
+that raised would abort the graph and discard every piece of evidence gathered so far. Instead:
+
+- One researcher failing → its task is marked `FAILED`, the others continue, the report notes the gap
+- A cyclic plan from the model → clean `invalid_output` failure, not a deadlocked graph
+- The graph itself blowing up → `run_workflow` still returns a coherent failed result, so the
+  evaluation runner *records* the failure rather than dying on it
+
+### Experiments are configuration, not code branches
+
+`critic_enabled`, `max_revisions`, `parallel_research` and `full_context` are flags on the
+dependency object. There's a test asserting all five configurations produce an **identical node
+set** — because an experiment that requires editing the graph is an experiment whose control arm
+is a different program.
+
+---
+
+## 🔬 What running it actually taught us
+
+The graph compiled and the unit tests passed. Then the first real end-to-end run failed — and
+each failure was a genuine defect that mocked tests could not have surfaced.
+
+| # | Symptom | Root cause | Fix |
+|---|---|---|---|
+| 1 | Re-planned forever, budget exhausted | Supervisor produced 10 sub-questions; the plan is capped at N research tasks; the gate scored coverage against **all 10**, so questions nobody was assigned could never be covered | Gate scores only *assigned* questions |
+| 2 | Second research round did nothing | A re-plan reuses task ids `R1…Rn`, still marked `COMPLETED` — every task was skipped while still costing a planning call | Reset task status on re-plan |
+| 3 | Critic verdict truncated mid-JSON, 152 s of retries | The reasoning model spends tokens reasoning before emitting; the verdict object exceeded the 2048-token ceiling | Raised the output ceiling |
+| 4 | Every researcher call doubled in cost, +24 s | The primary model was rate-limited; the retry logic retried it **three times** with backoff before falling through | Rate limits skip straight to the next model — never retried |
+| 5 | Circuit breaker fired on a healthy run | Refused calls consumed zero tokens but still counted against the call budget | Budget counts **billable** calls; refusals reported separately |
+| 6 | Wall clock blown at 711 s | With both preferred models throttled, the chain fell through to a fallback provider at ~29 s/call | Wait once for the fast model's quota instead of succeeding slowly on a worse one |
+
+Finding #5 is the one worth dwelling on. A single run reported **46 billable calls of 111
+attempted — 65 refusals.** Those two numbers answer different questions, and collapsing them into
+one made a working system look like a runaway loop.
+
+| 7 | Every call misreported as "rate limited" | `_friendly()` matched the bare substring `"rate"` — which lives inside **"generate"**, so every structured-output failure was classified as throttling | Match `"rate limit"` explicitly |
+| 8 | Runs died with quota apparently available | The binding limit is tokens-per-**day**, which the response headers do not expose at all — only the raw 429 body does | Daily quota is now a distinct error class; a second provider supplies headroom |
+| 9 | Fixed backoff always wrong | Providers state the exact wait ("retry in 18.5s"); a 6s guess was too short to work and long enough to waste | Parse and honour the provider's stated delay, capped |
+| 10 | Test suite writing to the production database | `store=None` meant "unspecified" and fell through to a real store — **52 orphaned rows** were found in the live tables | Sentinel default; `None` now genuinely means no persistence |
+
+> None of these ten were visible from unit tests. They needed real runs against a real,
+> rate-limited API. That is the argument for building the sequential path end to end *before*
+> adding parallelism.
+
+### The run that completed
+
+```
+status          completed          evidence            15
+wall_seconds    370.8              revision_count       2  (cap reached)
+agent_calls     43 billable        critic_approved  false  (objections recorded)
+                98 attempted       fabricated cites  E108  ← caught by the Fact-Checker
+tokens          103,035 in / 18,523 out
+persisted       15 evidence · 114 trace events · 1 report
+```
+
+Three things in that trace are worth more than the completion itself:
+
+- **The Critic rejected all three cycles.** The loop stopped at the cap and shipped anyway — with
+  **24 limitations** in the report, including the unresolved objections. §18's guarantee,
+  demonstrated against a real adversarial reviewer rather than a mock.
+- **`E108` was fabricated, and the deterministic half of the Fact-Checker caught it.** It appears
+  in `fabricated_citations` and is absent from the report's 14 cited sources.
+- **Source reliability capped confidence live.** A vendor-marketing passage ("CrewAI completing
+  standard workflows in under two seconds") was stored as `claim/low`, not `fact`. Planted
+  defects PD3 and PD4, handled without a human in the loop.
+
+---
+
 ## 🚀 Quick start
 
 ```bash
@@ -479,7 +571,7 @@ multi-agent-research-platform/
 ├── app/
 │   ├── config.py              ← 5 providers · per-agent model tiers · run budgets
 │   ├── schemas/               ← evidence · tasks · 7 handoff contracts · reports
-│   ├── graph/state.py         ← shared state · reducers · §27 permission table
+│   ├── graph/                 ← state · nodes · deterministic routing · compiled workflow
 │   ├── tools/                 ← 7 tools behind an agent-permission registry
 │   ├── storage/               ← BM25 corpus index · Postgres evidence store
 │   ├── services/              ← cross-provider LLM · per-agent token metering
@@ -514,7 +606,7 @@ reported from memory is not done*.
 | **2** | 24-doc corpus · BM25 · Postgres evidence store | 26/26 | ✅ |
 | **3** | 7 tools · permission boundaries · audit log | 23/23 | ✅ |
 | **4** | Six agents · context boundaries · single-agent baseline | 30/30 | ✅ |
-| 5 | Orchestration graph (sequential) | — | ⏳ |
+| **5** | Orchestration graph · routing · termination · persistence | 36/36 | ✅ |
 | 6 | Critic revision loop | — | ⏳ |
 | 7 | Parallel fan-out + measured speedup | — | ⏳ |
 | 8 | Human checkpoints · dashboard · export | — | ⏳ |
@@ -523,10 +615,10 @@ reported from memory is not done*.
 | 11 | Docs · security review · deploy | — | ⏳ |
 
 ```bash
-for p in 0 1 2 3 4; do python scripts/verify_phase$p.py; done
+for p in 0 1 2 3 4 5; do python scripts/verify_phase$p.py; done
 ```
 
-**Current: 139/139 acceptance checks · 143 tests passing.**
+**Current: 175/175 acceptance checks · 172 tests passing.**
 
 `python scripts/verify_phase4.py --live` adds 4 further checks that run a real research task
 against the API rather than mocks.

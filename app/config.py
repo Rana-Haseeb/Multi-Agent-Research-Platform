@@ -84,8 +84,12 @@ PROVIDERS: dict[str, ProviderConfig] = {
         label="Google AI Studio (free tier)",
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
         api_key_env="GOOGLE_API_KEY",
-        default_model="gemini-2.0-flash",
-        models=["gemini-2.0-flash", "gemini-2.0-flash-lite"],
+        # gemini-3.5-flash scored 9/10 on the planning probe; gemini-2.5-flash and
+        # -flash-lite return 404 through the OpenAI-compatible endpoint even though they appear
+        # in models.list(), so they are excluded from the live chain rather than left to fail.
+        default_model="gemini-3.5-flash",
+        models=["gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.0-flash"],
+        probe_models=["gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.0-flash"],
     ),
     "openrouter": ProviderConfig(
         label="OpenRouter (free — fallback only, 50 req/day)",
@@ -174,7 +178,7 @@ class Settings(BaseModel):
     provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "groq"))
     model_override: str | None = Field(default_factory=lambda: os.getenv("LLM_MODEL") or None)
     temperature: float = Field(default_factory=lambda: _float("LLM_TEMPERATURE", 0.0))
-    max_tokens: int = Field(default_factory=lambda: _int("LLM_MAX_TOKENS", 2048))
+    max_tokens: int = Field(default_factory=lambda: _int("LLM_MAX_TOKENS", 4096))
     fallback_providers: list[str] = Field(
         default_factory=lambda: [
             p.strip() for p in os.getenv("LLM_FALLBACK_PROVIDERS", "").split(",") if p.strip()
@@ -184,12 +188,20 @@ class Settings(BaseModel):
     # --- Workflow budgets (§18 revision cap, §22 runaway control, §29 cost) ---
     max_revision_cycles: int = Field(default_factory=lambda: _int("MAX_REVISION_CYCLES", 2))
     max_research_rounds: int = Field(default_factory=lambda: _int("MAX_RESEARCH_ROUNDS", 2))
-    max_agent_calls_per_run: int = Field(default_factory=lambda: _int("MAX_AGENT_CALLS_PER_RUN", 40))
-    max_parallel_researchers: int = Field(default_factory=lambda: _int("MAX_PARALLEL_RESEARCHERS", 4))
+    max_agent_calls_per_run: int = Field(default_factory=lambda: _int("MAX_AGENT_CALLS_PER_RUN", 50))
+    max_parallel_researchers: int = Field(default_factory=lambda: _int("MAX_PARALLEL_RESEARCHERS", 3))
     agent_timeout_seconds: int = Field(default_factory=lambda: _int("AGENT_TIMEOUT_SECONDS", 60))
-    max_run_seconds: int = Field(default_factory=lambda: _int("MAX_RUN_SECONDS", 600))
+    max_run_seconds: int = Field(default_factory=lambda: _int("MAX_RUN_SECONDS", 900))
     max_cost_usd_per_run: float = Field(default_factory=lambda: _float("MAX_COST_USD_PER_RUN", 0.50))
     max_retries_per_call: int = 2
+    # Wait once, then re-try the whole provider chain, when every model is rate limited.
+    # Free-tier quotas are per-minute, so a short pause restores the preferred model.
+    rate_limit_backoff_seconds: float = Field(
+        default_factory=lambda: _float("RATE_LIMIT_BACKOFF_SECONDS", 6.0))
+    # Ceiling on honouring a provider's stated wait. Beyond this it is a daily quota, not a
+    # per-minute one, and no single call should sit through it.
+    max_rate_limit_wait_seconds: float = Field(
+        default_factory=lambda: _float("MAX_RATE_LIMIT_WAIT_SECONDS", 45.0))
 
     # --- Retrieval / research source ---
     retrieval_mode: str = Field(default_factory=lambda: os.getenv("RETRIEVAL_MODE", "bm25"))

@@ -155,8 +155,80 @@ def main() -> int:
         ]
     (docs / "A4_tool_specification.md").write_text("\n".join(tool_md), encoding="utf-8")
 
+    # ---------------------------------------------------------- architecture
+    from app.config import settings
+    from app.graph.workflow import EDGES, describe_topology
+
+    arch = [
+        STAMP, "", "# Workflow Architecture (§7, §8, §18, §22)", "",
+        "Generated from the compiled graph, so the diagram cannot drift from the code that runs.",
+        "", "## Topology", "", "```mermaid", "flowchart TD",
+    ]
+    # Deterministic nodes get a distinct shape so the diagram shows, at a glance, where the
+    # system spends a model call and where it does not.
+    SHAPES = {
+        "__start__": '(["User request"])',
+        "__end__": '(["End"])',
+        "intake": '[["intake<br/>deterministic"]]',
+        "evidence_gate": '[["evidence gate<br/>deterministic"]]',
+        "revision": '[["revision counter<br/>deterministic"]]',
+        "plan_approval": '{{"human checkpoint"}}',
+    }
+
+    # `end` is a reserved keyword in mermaid — a node id of `end` silently breaks the whole
+    # diagram, and LangGraph's terminal node is literally named `__end__`. Rename both sentinels
+    # rather than stripping underscores blindly.
+    IDS = {"__start__": "req", "__end__": "done"}
+
+    def node_id(node: str) -> str:
+        return IDS.get(node, node)
+
+    def node_line(node: str) -> str:
+        shape = SHAPES.get(node) or '["' + node + '"]'
+        return "    " + node_id(node) + shape
+
+    seen: set[str] = set()
+    for src, dst, note in EDGES:
+        for node in (src, dst):
+            if node not in seen:
+                arch.append(node_line(node))
+                seen.add(node)
+        arrow = "-->|" + note + "|" if note else "-->"
+        arch.append("    " + node_id(src) + " " + arrow + " " + node_id(dst))
+    arch += ["```", "", "## Edges", "", "```", describe_topology(), "```", ""]
+
+    arch += [
+        "## Why the workflow always terminates", "",
+        "Three counters, each compared in `app/graph/routing.py`. Every one increases",
+        "monotonically, and every comparison routes **forward** once its cap is met, so no cycle",
+        "can repeat indefinitely.", "",
+        "| Counter | Bounds | Cap |", "|---|---|---|",
+        f"| `revision_count` | the Critic to Analyst loop | {settings.max_revision_cycles} |",
+        f"| `research_round` | re-planning when evidence is thin | {settings.max_research_rounds} |",
+        f"| `billable_calls` | everything else | {settings.max_agent_calls_per_run} |",
+        f"| wall clock | a hung run | {settings.max_run_seconds}s |", "",
+        "`tests/test_workflow.py::test_workflow_terminates_when_critic_rejects_forever` asserts",
+        "this against a Critic scripted to reject ten times in a row.", "",
+        "## Deterministic versus agentic", "",
+        "Routing never calls a model. Coverage scoring, budget enforcement, citation existence,",
+        "duplicate-task detection and revision counting are plain Python; a model is spent only",
+        "where judgement is genuinely required.", "",
+        "## Failure handling (§22)", "",
+        "| Failure | Response |", "|---|---|",
+        "| Agent returns invalid output | Reported as a failed `AgentOutcome`; the run ends cleanly with the error recorded |",
+        "| One researcher fails | Its task is marked FAILED, siblings continue, the gap reaches the report |",
+        "| Model API failure | Cross-provider fallback; a stated `retry-after` is honoured, capped |",
+        "| Daily quota exhausted | Distinct from a rate limit — the chain moves on rather than waiting |",
+        "| Critic unavailable | Falls back to the Fact-Checker's deterministic findings; never auto-approves |",
+        "| Duplicate research tasks | Collapsed before execution by string similarity |",
+        "| Dependency cycle in a plan | Rejected at construction, before the graph can deadlock |",
+        "| Database unreachable | Persistence no-ops; the run still completes |",
+        "| Runaway loop | Revision, research-round, call and wall-clock caps |", "",
+    ]
+    (docs / "A5_architecture.md").write_text("\n".join(arch), encoding="utf-8")
+
     for name in ("A2_state_specification.md", "A3_handoff_contracts.md",
-                 "A4_tool_specification.md"):
+                 "A4_tool_specification.md", "A5_architecture.md"):
         p = docs / name
         print(f"wrote {p.relative_to(ROOT)}  ({len(p.read_text(encoding='utf-8').splitlines())} lines)")
     return 0

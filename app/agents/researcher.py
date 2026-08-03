@@ -53,7 +53,7 @@ def research(
     usage: UsageTracker | None = None,
     store=None,
     run_id: str = "",
-    max_iterations: int = 6,
+    max_iterations: int = 4,
 ) -> tuple[AgentOutcome[ResearchHandoff], list[Evidence]]:
     """Execute one research task. Returns the handoff and the evidence actually stored."""
     ctx = ToolContext(

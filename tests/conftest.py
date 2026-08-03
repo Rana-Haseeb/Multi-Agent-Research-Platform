@@ -120,10 +120,20 @@ def fake_llm_factory(monkeypatch):
 
     def install(scripts: dict[str, list[Any]]):
         def _get_llm(agent_id: str = "system", usage: Any = None) -> FakeLLM:
-            llm = FakeLLM(script=list(scripts.get(agent_id, [])), agent_id=agent_id, usage=usage)
-            created[agent_id] = llm
+            # One FakeLLM per agent, reused across calls. ``get_llm`` is invoked fresh for every
+            # agent step, so building a new FakeLLM each time would reset the script and hand
+            # every call the same first response — which is exactly what happened the first time
+            # the full graph ran under mocks: the Supervisor's planning call received the brief
+            # intended for its analysis call and the plan failed validation.
+            llm = created.get(agent_id)
+            if llm is None:
+                llm = FakeLLM(script=list(scripts.get(agent_id, [])), agent_id=agent_id,
+                              usage=usage)
+                created[agent_id] = llm
+            llm.usage = usage
             return llm
 
+        created.clear()
         for module in ("app.agents.base", "app.services.llm_service"):
             monkeypatch.setattr(f"{module}.get_llm", _get_llm, raising=False)
         return created

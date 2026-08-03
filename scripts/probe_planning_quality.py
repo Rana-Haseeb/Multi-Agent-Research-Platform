@@ -119,7 +119,12 @@ def run(make, model: str, request: str, expect_ambiguous: bool) -> dict:
 
 
 def main() -> int:
-    cfg = PROVIDERS["groq"]
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--provider", default="groq")
+    args = ap.parse_args()
+    cfg = PROVIDERS[args.provider]
     key = os.getenv(cfg.api_key_env)
     if not key:
         print(f"No {cfg.api_key_env} set."); return 1
@@ -158,7 +163,7 @@ def main() -> int:
     print(f"\nHighest scoring: {best['model']}  ({best['total']}/10)")
 
     prev = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else {}
-    prev["groq_planning_quality"] = results
+    prev[f"{args.provider}_planning_quality"] = results
     OUT.write_text(json.dumps(prev, indent=2), encoding="utf-8")
     print(f"Saved -> {OUT.relative_to(ROOT)}")
     return 0

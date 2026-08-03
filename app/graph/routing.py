@@ -19,18 +19,20 @@ rejects forever.
 from __future__ import annotations
 
 from langgraph.graph import END
+from langgraph.types import Send
 
 from app.config import settings
 from app.graph.nodes import WorkflowDeps
 from app.graph.state import WorkflowState
-from app.schemas.common import WorkflowStatus
+from app.schemas.common import TaskStatus, WorkflowStatus
 
 # Node names, in one place so a typo is an import error rather than a silent dead edge.
 INTAKE = "intake"
 ANALYSE = "supervisor_analyse"
 PLAN = "supervisor_plan"
 PLAN_APPROVAL = "plan_approval"
-RESEARCH = "research_dispatch"
+RESEARCH = "research_dispatch"      # sequential arm (Experiment 3 control)
+RESEARCH_TASK = "research_task"      # Send() target, one per sub-question
 EVIDENCE_GATE = "evidence_gate"
 ANALYST = "analyst"
 FACT_CHECKER = "fact_checker"
@@ -68,11 +70,44 @@ def route_after_plan(state: WorkflowState) -> str:
     return END if _dead(state) else PLAN_APPROVAL
 
 
-def route_after_plan_approval(state: WorkflowState) -> str:
-    """Phase 8 adds the rejected branch here; the topology already anticipates it."""
-    if _dead(state):
-        return END
-    return RESEARCH if state.get("plan_approved") else END
+def make_route_after_plan_approval(deps: WorkflowDeps):
+    """Dispatch research — sequentially, or fanned out across concurrent branches (§19).
+
+    A conditional edge may return either a node name or a list of ``Send`` objects, so the same
+    edge serves both arms of Experiment 3 without duplicating the graph. That matters: the
+    control arm has to be the *same program* under a different flag, or the comparison measures
+    two codebases rather than one variable.
+
+    Each ``Send`` carries only its own task, so a researcher receives its sub-question and
+    nothing else. Results merge back through the state reducers.
+    """
+    def route_after_plan_approval(state: WorkflowState):
+        if _dead(state) or not state.get("plan_approved"):
+            return END
+
+        plan = state.get("plan")
+        if not deps.parallel_research or plan is None:
+            return RESEARCH
+
+        objective = state["brief"].objective if state.get("brief") else ""
+        done = state.get("task_status", {})
+        pending = [
+            t for t in plan.research_tasks()
+            if done.get(t.task_id) is not TaskStatus.COMPLETED
+        ][: settings.max_parallel_researchers]
+
+        if not pending:
+            return RESEARCH      # nothing to fan out; the sequential node reports the emptiness
+        return [
+            Send(RESEARCH_TASK, {
+                "task_id": t.task_id,
+                "research_question": t.research_question or "",
+                "objective": objective,
+            })
+            for t in pending
+        ]
+
+    return route_after_plan_approval
 
 
 def make_route_after_gate(deps: WorkflowDeps):

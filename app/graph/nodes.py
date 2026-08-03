@@ -239,6 +239,28 @@ def research_one(deps: WorkflowDeps, task_id: str, research_question: str,
     return update
 
 
+def make_research_task(deps: WorkflowDeps):
+    """The ``Send()`` target: one researcher, one sub-question, executed concurrently.
+
+    LangGraph delivers the ``Send`` payload as this node's input rather than the full workflow
+    state, which is exactly the isolation §21 asks for — a researcher physically cannot read a
+    sibling's findings, so parallel branches stay independent rather than merely being told to.
+
+    Everything returned here carries a reducer (``evidence``, ``research_handoffs``,
+    ``task_status``, ``trace``, ``errors``), so concurrent completions merge instead of
+    overwriting. That property was designed in Phase 1 and asserted before the fan-out existed.
+    """
+    def research_task(payload: dict) -> dict:
+        return research_one(
+            deps,
+            payload["task_id"],
+            payload.get("research_question", ""),
+            payload.get("objective", ""),
+        )
+
+    return research_task
+
+
 def make_research_dispatch(deps: WorkflowDeps):
     def research_dispatch(state: WorkflowState) -> dict:
         """Run every pending research task, sequentially.

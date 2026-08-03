@@ -20,8 +20,11 @@ flowchart TD
     plan_approval{{"human checkpoint"}}
     supervisor_plan -->|valid plan| plan_approval
     research_dispatch["research_dispatch"]
-    plan_approval -->|approved| research_dispatch
+    plan_approval -->|approved, sequential| research_dispatch
+    research_task["research_task"]
+    plan_approval -->|approved, parallel fan-out| research_task
     evidence_gate[["evidence gate<br/>deterministic"]]
+    research_task --> evidence_gate
     research_dispatch --> evidence_gate
     evidence_gate -->|coverage thin, round < cap| supervisor_plan
     analyst["analyst"]
@@ -49,7 +52,9 @@ flowchart TD
   supervisor_analyse   -> supervisor_plan      [clear]
   supervisor_analyse   -> __end__              [clarification required]
   supervisor_plan      -> plan_approval        [valid plan]
-  plan_approval        -> research_dispatch    [approved]
+  plan_approval        -> research_dispatch    [approved, sequential]
+  plan_approval        -> research_task        [approved, parallel fan-out]
+  research_task        -> evidence_gate        
   research_dispatch    -> evidence_gate        
   evidence_gate        -> supervisor_plan      [coverage thin, round < cap]
   evidence_gate        -> analyst              [coverage sufficient]

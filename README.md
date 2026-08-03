@@ -9,7 +9,7 @@ and hand you a report where every claim traces back to a source.**
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1C3C3C?style=for-the-badge)](https://langchain-ai.github.io/langgraph/)
 [![Providers](https://img.shields.io/badge/LLM-5_providers_·_failover-8957e5?style=for-the-badge)](#-measured-decisions-no-vibes)
 [![Postgres](https://img.shields.io/badge/Postgres-17-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
-[![Tests](https://img.shields.io/badge/tests-184_passing-success?style=for-the-badge)](tests/)
+[![Tests](https://img.shields.io/badge/tests-196_passing-success?style=for-the-badge)](tests/)
 
 <samp>Visibility Bots Innovation Lab · AI Summer Fellowship 2026 · Track 2: NLP & AI Agents · **Week 4**</samp>
 
@@ -572,6 +572,72 @@ The fix scopes the Critic's remit explicitly, and a regression test pins it.
 
 ---
 
+## ⚡ Parallel research, measured
+
+```bash
+python experiments/exp3_parallel_research.py
+```
+
+**Experiment 3 — three research tasks, live against the API:**
+
+| Arm | Wall clock | Evidence | Billable calls | Input tokens |
+|---|---:|---:|---:|---:|
+| Sequential | 249.5 s | 2 | 15 | 24,064 |
+| **Parallel** | **95.0 s** | 2 | 15 | 24,670 |
+
+**2.63× speedup — 88% of the 3× theoretical ceiling.**
+
+The columns that aren't the headline matter just as much: identical evidence, identical call
+count, tokens within 2.5%. **Parallelism changed latency and nothing else.** A large gap in
+either would mean something other than dispatch order differed between the arms, and there's a
+check asserting it doesn't.
+
+One honest cost: refused calls rose from 45 to 55. Parallel branches burst against a per-minute
+token quota that sequential ones spread out, so on a rate-limited tier some of the speedup is
+paid back in retries. Worth knowing before scaling the fan-out width.
+
+### Both arms are the same program
+
+A conditional edge returns either a node name or a list of `Send` objects:
+
+```
+plan_approval --> research_dispatch   [approved, sequential]
+plan_approval --> research_task       [approved, parallel fan-out]
+```
+
+There's a check asserting both flags produce an **identical node set**, because a control arm
+that is a different codebase measures two programs rather than one variable.
+
+Each `Send` carries only `{task_id, research_question, objective}`. LangGraph delivers the
+payload as the node's input instead of the full state, so a researcher **physically cannot** read
+a sibling's findings — §21 isolation becomes structural rather than instructed.
+
+### Proving concurrency, not just structure
+
+"Runs in parallel" is easy to claim and easy to get wrong: a `Send` list that happens to execute
+serially looks identical in the trace. So the test measures wall clock against deliberately slow
+researchers — 3 tasks × 0.4 s, where sequential execution needs ≥ 1.2 s:
+
+```
+measured: 0.41s
+```
+
+The experiment harness also has a `--simulate` mode with fixed-cost stub researchers and **zero
+API calls**, which reproduces 2.9× of a known 3× ceiling. The instrument is validated before it
+is trusted with a measurement.
+
+### The hazard parallelism introduced
+
+`UsageTracker` carried a comment saying a lock would be needed *"if the fan-out ever moves to
+real threads."* It has — LangGraph executes synchronous nodes across a thread pool.
+
+`list.append` is atomic under the GIL, but `check_budget` is a **read-modify-write**: two
+branches could both observe `cap - 1` and both proceed, overshooting the budget by the width of
+the fan-out. Now locked, and stress-tested at **1,200 records across 6 concurrent writers with
+zero lost updates**.
+
+---
+
 ## 🚀 Quick start
 
 ```bash
@@ -663,17 +729,17 @@ reported from memory is not done*.
 | **4** | Six agents · context boundaries · single-agent baseline | 30/30 | ✅ |
 | **5** | Orchestration graph · routing · termination · persistence | 36/36 | ✅ |
 | **6** | Critic loop · detection-rate benchmark · false-positive control | 23/23 | ✅ |
-| 7 | Parallel fan-out + measured speedup | — | ⏳ |
+| **7** | Parallel fan-out · thread safety · Experiment 3 measured | 24/24 | ✅ |
 | 8 | Human checkpoints · dashboard · export | — | ⏳ |
 | 9 | Automated tests | — | ⏳ |
 | 10 | 25 eval cases · 5 experiments · 10 adversarial | — | ⏳ |
 | 11 | Docs · security review · deploy | — | ⏳ |
 
 ```bash
-for p in 0 1 2 3 4 5 6; do python scripts/verify_phase$p.py; done
+for p in 0 1 2 3 4 5 6 7; do python scripts/verify_phase$p.py; done
 ```
 
-**Current: 198/198 acceptance checks · 184 tests passing.**
+**Current: 222/222 acceptance checks · 196 tests passing.**
 
 `python scripts/verify_phase4.py --live` adds 4 further checks that run a real research task
 against the API rather than mocks.

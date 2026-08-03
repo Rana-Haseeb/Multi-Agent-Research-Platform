@@ -63,6 +63,7 @@ from app.graph.nodes import (
     make_plan,
     make_plan_approval,
     make_research_dispatch,
+    make_research_task,
     make_revision,
     make_writer,
 )
@@ -82,6 +83,7 @@ def build_workflow(deps: WorkflowDeps, checkpointer: Any = None):
     g.add_node(R.PLAN, make_plan(deps))
     g.add_node(R.PLAN_APPROVAL, make_plan_approval(deps))
     g.add_node(R.RESEARCH, make_research_dispatch(deps))
+    g.add_node(R.RESEARCH_TASK, make_research_task(deps))
     g.add_node(R.EVIDENCE_GATE, make_evidence_gate(deps))
     g.add_node(R.ANALYST, make_analyst(deps))
     g.add_node(R.FACT_CHECKER, make_fact_checker(deps))
@@ -94,8 +96,11 @@ def build_workflow(deps: WorkflowDeps, checkpointer: Any = None):
     g.add_conditional_edges(R.INTAKE, R.route_after_intake, [R.ANALYSE, END])
     g.add_conditional_edges(R.ANALYSE, R.route_after_analyse, [R.PLAN, END])
     g.add_conditional_edges(R.PLAN, R.route_after_plan, [R.PLAN_APPROVAL, END])
-    g.add_conditional_edges(R.PLAN_APPROVAL, R.route_after_plan_approval, [R.RESEARCH, END])
+    # One edge, two arms: a node name for the sequential path, a Send list for the fan-out.
+    g.add_conditional_edges(R.PLAN_APPROVAL, R.make_route_after_plan_approval(deps),
+                            [R.RESEARCH, R.RESEARCH_TASK, END])
     g.add_edge(R.RESEARCH, R.EVIDENCE_GATE)
+    g.add_edge(R.RESEARCH_TASK, R.EVIDENCE_GATE)
     g.add_conditional_edges(R.EVIDENCE_GATE, R.make_route_after_gate(deps),
                             [R.PLAN, R.ANALYST, END])
     g.add_conditional_edges(R.ANALYST, R.route_after_analyst, [R.FACT_CHECKER, END])
@@ -262,7 +267,9 @@ EDGES: list[tuple[str, str, str]] = [
         (R.ANALYSE, R.PLAN, "clear"),
         (R.ANALYSE, END, "clarification required"),
         (R.PLAN, R.PLAN_APPROVAL, "valid plan"),
-        (R.PLAN_APPROVAL, R.RESEARCH, "approved"),
+        (R.PLAN_APPROVAL, R.RESEARCH, "approved, sequential"),
+        (R.PLAN_APPROVAL, R.RESEARCH_TASK, "approved, parallel fan-out"),
+        (R.RESEARCH_TASK, R.EVIDENCE_GATE, ""),
         (R.RESEARCH, R.EVIDENCE_GATE, ""),
         (R.EVIDENCE_GATE, R.PLAN, "coverage thin, round < cap"),
         (R.EVIDENCE_GATE, R.ANALYST, "coverage sufficient"),

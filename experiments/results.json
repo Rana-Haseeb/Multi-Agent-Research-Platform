@@ -1,0 +1,92 @@
+{
+  "exp3_parallel_research_simulated": {
+    "summary": {
+      "tasks": 3,
+      "repeats": 1,
+      "simulated": true,
+      "sequential_median_s": 1.52,
+      "parallel_median_s": 0.51,
+      "speedup": 2.98,
+      "theoretical_max": 3,
+      "evidence_sequential": 0,
+      "evidence_parallel": 0,
+      "input_tokens_sequential": 0,
+      "input_tokens_parallel": 0
+    },
+    "rows": [
+      {
+        "parallel": false,
+        "wall_seconds": 1.52,
+        "tasks": 3,
+        "tasks_completed": 3,
+        "evidence": 0,
+        "billable_calls": 0,
+        "attempted_calls": 0,
+        "refused_calls": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "errors": 0,
+        "repeat": 1
+      },
+      {
+        "parallel": true,
+        "wall_seconds": 0.51,
+        "tasks": 3,
+        "tasks_completed": 3,
+        "evidence": 0,
+        "billable_calls": 0,
+        "attempted_calls": 0,
+        "refused_calls": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "errors": 0,
+        "repeat": 1
+      }
+    ]
+  },
+  "exp3_parallel_research": {
+    "summary": {
+      "tasks": 3,
+      "repeats": 1,
+      "simulated": false,
+      "sequential_median_s": 249.49,
+      "parallel_median_s": 95.03,
+      "speedup": 2.63,
+      "theoretical_max": 3,
+      "evidence_sequential": 2,
+      "evidence_parallel": 2,
+      "input_tokens_sequential": 24064,
+      "input_tokens_parallel": 24670
+    },
+    "rows": [
+      {
+        "parallel": false,
+        "wall_seconds": 249.49,
+        "tasks": 3,
+        "tasks_completed": 3,
+        "evidence": 2,
+        "billable_calls": 15,
+        "attempted_calls": 60,
+        "refused_calls": 45,
+        "input_tokens": 24064,
+        "output_tokens": 3485,
+        "errors": 0,
+        "repeat": 1
+      },
+      {
+        "parallel": true,
+        "wall_seconds": 95.03,
+        "tasks": 3,
+        "tasks_completed": 3,
+        "evidence": 2,
+        "billable_calls": 15,
+        "attempted_calls": 70,
+        "refused_calls": 55,
+        "input_tokens": 24670,
+        "output_tokens": 2744,
+        "errors": 0,
+        "repeat": 1
+      }
+    ]
+  }
+}

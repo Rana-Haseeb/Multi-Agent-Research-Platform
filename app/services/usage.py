@@ -13,6 +13,7 @@ supervisor→critic→analyst loop from quietly costing real money (§22).
 """
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -38,16 +39,22 @@ class CallRecord:
 
 @dataclass
 class UsageTracker:
-    """Accumulates one run's model usage. Not thread-safe by design — see note below.
+    """Accumulates one run's model usage. Thread-safe.
 
-    Parallel researchers run in separate LangGraph branches but the same Python process and
-    event loop, so appends are effectively serialised. If the fan-out ever moves to real
-    threads, guard :meth:`record` with a lock.
+    LangGraph executes a ``Send()`` fan-out across a thread pool for synchronous nodes, so from
+    Phase 7 onward several researchers really do call :meth:`record` concurrently. An earlier
+    version of this docstring said a lock would be needed "if the fan-out ever moves to real
+    threads" — it has, so the lock is here.
+
+    ``list.append`` is atomic under the GIL, but the read-modify-write in :meth:`check_budget`
+    is not: two branches could both observe ``billable_calls == cap - 1`` and both proceed,
+    overshooting the budget. The lock closes that window and makes the counters consistent.
     """
 
     run_id: str = ""
     started_at: float = field(default_factory=time.perf_counter)
     calls: list[CallRecord] = field(default_factory=list)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     # ---------------------------------------------------------------- recording
     def record(
@@ -73,7 +80,8 @@ class UsageTracker:
             input_tokens=input_tokens, output_tokens=output_tokens,
             seconds=seconds, cost_usd=cost, ok=ok, error=error,
         )
-        self.calls.append(rec)
+        with self._lock:
+            self.calls.append(rec)
         return rec
 
     # ----------------------------------------------------------------- totals
@@ -149,11 +157,19 @@ class UsageTracker:
 
     # ------------------------------------------------------------ circuit break
     def check_budget(self) -> None:
-        """Raise :class:`BudgetExceeded` if this run has gone past any ceiling."""
-        if self.billable_calls >= settings.max_agent_calls_per_run:
+        """Raise :class:`BudgetExceeded` if this run has gone past any ceiling.
+
+        Held under the lock so concurrent researchers cannot both pass a check that only one of
+        them should — the classic check-then-act race, which under a fan-out would let the run
+        overshoot its cap by the width of the fan-out.
+        """
+        with self._lock:
+            billable = sum(1 for c in self.calls if c.ok or c.input_tokens or c.output_tokens)
+            attempted = len(self.calls)
+        if billable >= settings.max_agent_calls_per_run:
             raise BudgetExceeded(
                 f"Run exceeded {settings.max_agent_calls_per_run} model calls "
-                f"({self.billable_calls} billable of {self.total_calls} attempted). "
+                f"({billable} billable of {attempted} attempted). "
                 f"Stopping to prevent a runaway loop."
             )
         if self.elapsed_seconds >= settings.max_run_seconds:

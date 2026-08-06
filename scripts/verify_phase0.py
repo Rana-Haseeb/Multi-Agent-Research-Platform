@@ -67,7 +67,14 @@ try:
     from app.services.llm_service import configured_providers, get_llm
     from app.services.usage import BudgetExceeded, UsageTracker
 
-    check("5 providers registered", len(PROVIDERS) == 5, str(list(PROVIDERS)))
+    # Asserted by capability, not by count. The original check was `len(PROVIDERS) == 5` and it
+    # broke the moment a second and third provider organisation were added for capacity — a
+    # correct change failing a test that was measuring the wrong property.
+    required = {"groq", "google", "openrouter", "openai"}
+    check("every required provider family is registered", required <= set(PROVIDERS),
+          f"{len(PROVIDERS)} registered: {', '.join(PROVIDERS)}")
+    check("at least two provider entries exist for cross-provider fallback",
+          len(PROVIDERS) >= 2)
     keys = configured_providers()
     check("at least one provider key present", any(keys.values()),
           str([k for k, v in keys.items() if v]))

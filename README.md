@@ -836,6 +836,75 @@ nothing from also running three researchers.
 
 ---
 
+## 🧪 Experiments
+
+```bash
+python experiments/run_experiments.py --experiment all
+python scripts/gen_experiment_report.py        # regenerate docs/A7_experiments.md
+```
+
+All five §30 experiments complete. Full write-up in
+[`docs/A7_experiments.md`](docs/A7_experiments.md), generated from the results file.
+
+| # | Experiment | Result |
+|---|---|---|
+| 1 | Single vs multi-agent | 3.6× calls for 8.5× the declared limitations — **and no fabrication in either arm** |
+| 2 | With vs without Critic | **4/4 planted defects caught** for +2 model calls |
+| 3 | Sequential vs parallel | **2.63× speedup**, 88% of the theoretical ceiling |
+| 4 | Full vs role-specific context | **−46%** context for the Critic, no quality loss |
+| 5 | Revision limits 0/1/2 | **One revision fixes everything; the second adds nothing** |
+
+### Experiment 1 did not go the way the architecture wanted
+
+| | Single agent | Multi-agent | Ratio |
+|---|---:|---:|---:|
+| Wall clock | 68.3 s | 208.3 s | 3.0× |
+| Model calls | 11 | 40 | 3.6× |
+| Input tokens | 19,991 | 62,355 | 3.1× |
+| Evidence gathered | 2 | 4 | 2.0× |
+| Report length | 2,276 | 6,869 | 3.0× |
+| **Limitations declared** | **2** | **17** | **8.5×** |
+| **Fabricated citations** | **0** | **0** | — |
+
+The hypothesis was that an unchecked single agent would cite evidence it never stored — something
+the multi-agent path *structurally cannot* do, since the Fact-Checker's first half is a
+set-membership test. **On this run it fabricated nothing.**
+
+Where the gap is unambiguous is **disclosure**: 17 declared limitations against 2, on the same
+question and the same corpus. The multi-agent path forces every researcher gap and every
+unresolved reviewer objection into the report. The single agent has no mechanism that makes it
+mention what it failed to find.
+
+**The cost is not marginal.** For a narrow, well-covered question where nothing goes wrong, a
+single agent produced a defensible answer for a third of the price.
+
+> **n = 1.** The fabrication result is a single sample. Experiment 2 shows what happens when a
+> defective analysis *does* occur — the Critic removed all four planted defects for two model
+> calls. The honest reading: this architecture buys **insurance and disclosure**, not a uniformly
+> better answer. Insurance is only worth its premium when the failure it covers actually happens.
+
+That is also the answer to *"when would a single agent have been better?"* — and the spec asks
+for that answer as directly as it asks for the other one.
+
+### The capacity model, learned the hard way
+
+Six attempts at Experiment 1 failed before one succeeded, each on a different consequence of the
+same arithmetic:
+
+| Quantity | Measured |
+|---|---:|
+| Tokens per complete workflow | ~100,000 |
+| Combined ceiling, three provider orgs | ~60,000 / min |
+| Minimum duration per run | ~1.7 min |
+| Complete runs per day | ~9 |
+
+Four of the fixes those failures produced are permanent improvements: the fallback chain now
+re-walks every provider with growing backoff instead of giving up after one retry, and
+process-wide call pacing converts *fails unpredictably* into *takes longer* — the correct trade
+on a metered tier. Pacing defaults to off, so interactive use is unaffected.
+
+---
+
 ## 🚀 Quick start
 
 ```bash
@@ -930,7 +999,7 @@ reported from memory is not done*.
 | **7** | Parallel fan-out · thread safety · Experiment 3 measured | 24/24 | ✅ |
 | **8** | Human checkpoints · workflow console · Markdown export | 29/29 | ✅ |
 | **9** | 28-case evaluation · falsifiable metrics · resumable runner | 44/44 | ✅ |
-| 10 | 25 eval cases · 5 experiments · 10 adversarial | — | ⏳ |
+| **10** | 5 experiments · generated experiment report | 5/5 | ✅ |
 | 11 | Docs · security review · deploy | — | ⏳ |
 
 ```bash

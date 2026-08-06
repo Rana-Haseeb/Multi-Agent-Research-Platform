@@ -80,6 +80,27 @@ PROVIDERS: dict[str, ProviderConfig] = {
             "qwen/qwen3.6-27b",          #  5/10
         ],
     ),
+    # Same service, different organisation. Groq meters tokens-per-day per ORG, so a second
+    # account is a genuine second allowance rather than a duplicate — verified by the two keys
+    # reporting different remaining counts and different reset windows. Placed first in the
+    # fallback chain because it is the same speed and the same models; falling through to a
+    # slower provider should be the last resort, not the first.
+    "groq2": ProviderConfig(
+        label="Groq (second organisation)",
+        base_url="https://api.groq.com/openai/v1",
+        api_key_env="GROQ_API_KEY_2",
+        default_model="openai/gpt-oss-120b",
+        models=["openai/gpt-oss-120b", "llama-3.3-70b-versatile"],
+        probe_models=["openai/gpt-oss-120b", "llama-3.3-70b-versatile"],
+    ),
+    "groq3": ProviderConfig(
+        label="Groq (third organisation)",
+        base_url="https://api.groq.com/openai/v1",
+        api_key_env="GROQ_API_KEY_3",
+        default_model="openai/gpt-oss-120b",
+        models=["openai/gpt-oss-120b", "llama-3.3-70b-versatile"],
+        probe_models=["openai/gpt-oss-120b", "llama-3.3-70b-versatile"],
+    ),
     "google": ProviderConfig(
         label="Google AI Studio (free tier)",
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -149,6 +170,9 @@ PROVIDERS: dict[str, ProviderConfig] = {
 # Buckets are per-model, and ~480 calls are planned for the whole week, so quota is not binding.
 #
 # Experiment 4 measures whether this tiering costs output quality relative to all-120b.
+# Both Groq organisations serve the same model ids, so the tiering applies to either.
+GROQ_PROVIDERS = frozenset({"groq", "groq2", "groq3"})
+
 AGENT_MODELS: dict[str, str] = {
     "supervisor":   "openai/gpt-oss-120b",
     "analyst":      "openai/gpt-oss-120b",
@@ -166,7 +190,7 @@ def model_for_agent(agent_id: str) -> str | None:
     Returns None for any provider other than the tiered one, since these ids are Groq-specific
     and a fallback provider must fall back to *its* own default rather than a missing model id.
     """
-    if settings.provider != "groq" or settings.model_override:
+    if settings.provider not in GROQ_PROVIDERS or settings.model_override:
         return settings.model_override
     return AGENT_MODELS.get(agent_id)
 
@@ -202,6 +226,15 @@ class Settings(BaseModel):
     # per-minute one, and no single call should sit through it.
     max_rate_limit_wait_seconds: float = Field(
         default_factory=lambda: _float("MAX_RATE_LIMIT_WAIT_SECONDS", 45.0))
+    # How many times to re-walk the whole provider chain when every model is throttled.
+    rate_limit_passes: int = Field(default_factory=lambda: _int("RATE_LIMIT_PASSES", 3))
+    # Pause between paired experiment arms so the second does not inherit a drained bucket.
+    inter_arm_pause_seconds: float = Field(
+        default_factory=lambda: _float("INTER_ARM_PAUSE_SECONDS", 75.0))
+    # Minimum seconds between model calls, process-wide. 0 disables pacing. Set this for long
+    # unattended runs on a tokens-per-minute tier; see llm_service._pace for the arithmetic.
+    min_call_interval_seconds: float = Field(
+        default_factory=lambda: _float("MIN_CALL_INTERVAL_SECONDS", 0.0))
 
     # --- Retrieval / research source ---
     retrieval_mode: str = Field(default_factory=lambda: os.getenv("RETRIEVAL_MODE", "bm25"))

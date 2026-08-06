@@ -35,6 +35,39 @@ from app.services.usage import UsageTracker
 
 T = TypeVar("T", bound=BaseModel)
 
+# --------------------------------------------------------------------------- #
+# Process-wide call pacing
+# --------------------------------------------------------------------------- #
+# Free tiers meter TOKENS PER MINUTE, and a workflow's token demand is fixed — so the only
+# variable under our control is how fast we spend it. Measured: a full workflow needs ~100k
+# tokens; against a ~40k/min ceiling that is ~2.5 minutes of budget no matter what. Attempting
+# it in 28 seconds drained every provider and the run died at the final large call, with retries
+# unable to help because the deficit was arithmetic rather than transient.
+#
+# Spacing calls converts "fails unpredictably" into "takes longer", which is the right trade on a
+# metered tier. Default 0 (no pacing) so interactive use is unaffected; long unattended runs —
+# evaluation, experiments — set it deliberately.
+#
+# Shared across threads because the researcher fan-out is exactly the burst this exists to
+# flatten: without the lock, N parallel branches would each see a stale timestamp and fire
+# together, which is the behaviour being prevented.
+_pace_lock = __import__("threading").Lock()
+_last_call_at = 0.0
+
+
+def _pace() -> None:
+    """Block until ``min_call_interval_seconds`` has elapsed since the previous call."""
+    interval = settings.min_call_interval_seconds
+    if interval <= 0:
+        return
+    global _last_call_at
+    with _pace_lock:
+        wait = interval - (time.monotonic() - _last_call_at)
+        if wait > 0:
+            time.sleep(wait)
+        _last_call_at = time.monotonic()
+
+
 # Failures worth retrying **on the same model**: a blip that a short wait may clear.
 _RETRY_SAME = ("timeout", "timed out", "temporarily", "overloaded", "502", "503", "504")
 
@@ -224,13 +257,18 @@ class LLMService:
         if self.usage:
             self.usage.check_budget()
 
+        _pace()
         last: LLMError | None = None
-        # Two passes. If the first exhausts the chain and *every* failure was a rate limit, the
-        # models are healthy and merely throttled — a short wait restores the fast, high-quality
-        # models. Measured: without this, a throttled run fell through to a slow fallback
-        # provider at ~29s per call and a full workflow blew its wall-clock budget at 711s.
-        # Waiting for the preferred model beats succeeding slowly on a worse one.
-        for attempt in range(2):
+        # Several passes. If a pass exhausts the chain and *every* failure was a rate limit, the
+        # models are healthy and merely throttled — waiting restores the fast, high-quality
+        # models, and waiting beats succeeding slowly on a worse one.
+        #
+        # Why more than two passes: per-minute token buckets are refilled by the clock, and a
+        # burst can drain EVERY provider at once. Three parallel researchers at ~2k tokens each
+        # exhausted the whole chain simultaneously, and with a single 6s retry the run simply
+        # failed — while a plain 4-token health check against the same models succeeded. The
+        # backoff grows so a deep drain gets a proportionate wait instead of the same short one.
+        for attempt in range(settings.rate_limit_passes):
             all_rate_limited = True
             waits: list[float] = []
             for provider, model in self._chain():
@@ -267,12 +305,14 @@ class LLMService:
                     )
                 return result
 
-            if attempt == 0 and all_rate_limited:
+            if attempt < settings.rate_limit_passes - 1 and all_rate_limited:
                 # Honour the longest wait any provider actually asked for, capped so a daily
-                # quota (which reports minutes or hours) never stalls a run.
+                # quota (which reports minutes or hours) never stalls a run. The floor grows
+                # with each pass: a bucket that is still empty after 6s needs longer, not the
+                # same 6s again.
                 asked = max(waits) if waits else 0.0
-                pause = min(max(asked, settings.rate_limit_backoff_seconds),
-                            settings.max_rate_limit_wait_seconds)
+                floor = settings.rate_limit_backoff_seconds * (attempt + 1)
+                pause = min(max(asked, floor), settings.max_rate_limit_wait_seconds)
                 if pause > 0:
                     time.sleep(pause)
                     continue

@@ -88,5 +88,191 @@
         "repeat": 1
       }
     ]
+  },
+  "exp4_context_strategy": {
+    "measured_offline": {
+      "full_context_chars": 3182,
+      "full_context_est_tokens": 795,
+      "per_agent": {
+        "analyst": {
+          "chars": 1678,
+          "est_tokens": 419,
+          "reduction_vs_full": 0.473
+        },
+        "critic": {
+          "chars": 1730,
+          "est_tokens": 432,
+          "reduction_vs_full": 0.456
+        }
+      }
+    },
+    "measured_live": {
+      "role_specific": {
+        "ok": true,
+        "wall_seconds": 23.3,
+        "input_tokens": 1322,
+        "output_tokens": 1327,
+        "conclusions": 4,
+        "major_conclusions": 3,
+        "cited_ids": [
+          "E101",
+          "E102",
+          "E103",
+          "E105"
+        ],
+        "fabricated_ids": []
+      },
+      "full_context": {
+        "ok": true,
+        "wall_seconds": 3.0,
+        "input_tokens": 1384,
+        "output_tokens": 1051,
+        "conclusions": 4,
+        "major_conclusions": 1,
+        "cited_ids": [
+          "E101",
+          "E102",
+          "E103",
+          "E104",
+          "E105"
+        ],
+        "fabricated_ids": []
+      },
+      "token_reduction": 0.045
+    },
+    "_wall_seconds": 26.3
+  },
+  "exp2_with_without_critic": {
+    "critic_disabled": {
+      "wall_seconds": 25.1,
+      "billable_calls": 2,
+      "input_tokens": 1624,
+      "output_tokens": 2242,
+      "critic_problems_found": 0,
+      "revisions": 0,
+      "fabricated_citations_detected": [
+        "E999"
+      ],
+      "defects_surviving": [
+        "fabricated_citation",
+        "vendor_claim_as_fact",
+        "overgeneralised",
+        "unresearched_criterion"
+      ],
+      "evidence_cited": 4,
+      "report_chars": 3921
+    },
+    "critic_enabled": {
+      "wall_seconds": 12.4,
+      "billable_calls": 4,
+      "input_tokens": 5870,
+      "output_tokens": 3686,
+      "critic_problems_found": 6,
+      "revisions": 1,
+      "fabricated_citations_detected": [
+        "E999"
+      ],
+      "defects_surviving": [],
+      "evidence_cited": 5,
+      "report_chars": 4854
+    },
+    "delta": {
+      "planted_defects": [
+        "fabricated_citation",
+        "vendor_claim_as_fact",
+        "overgeneralised",
+        "unresearched_criterion"
+      ],
+      "caught_by_critic": [
+        "fabricated_citation",
+        "overgeneralised",
+        "unresearched_criterion",
+        "vendor_claim_as_fact"
+      ],
+      "survived_both": [],
+      "extra_calls_for_the_critic": 2,
+      "extra_seconds_for_the_critic": -12.7
+    },
+    "_wall_seconds": 37.5
+  },
+  "exp5_revision_limits": {
+    "max_revisions_0": {
+      "wall_seconds": 23.0,
+      "billable_calls": 1,
+      "input_tokens": 967,
+      "output_tokens": 1354,
+      "revisions_used": 0,
+      "problems_per_cycle": [],
+      "defects_surviving": [
+        "fabricated_citation",
+        "vendor_claim_as_fact",
+        "overgeneralised",
+        "unresearched_criterion"
+      ],
+      "final_verdict_approved": null,
+      "evidence_cited": 4
+    },
+    "max_revisions_1": {
+      "wall_seconds": 9.8,
+      "billable_calls": 4,
+      "input_tokens": 4972,
+      "output_tokens": 2159,
+      "revisions_used": 1,
+      "problems_per_cycle": [
+        3
+      ],
+      "defects_surviving": [],
+      "final_verdict_approved": false,
+      "evidence_cited": 3
+    },
+    "max_revisions_2": {
+      "wall_seconds": 29.1,
+      "billable_calls": 7,
+      "input_tokens": 9584,
+      "output_tokens": 4085,
+      "revisions_used": 2,
+      "problems_per_cycle": [
+        7,
+        3
+      ],
+      "defects_surviving": [],
+      "final_verdict_approved": false,
+      "evidence_cited": 5
+    },
+    "_wall_seconds": 61.9
+  },
+  "exp1_single_vs_multi_agent": {
+    "request": "Compare LangGraph and CrewAI for a 4-person Python team building a production multi-agent support system. Recommend one.",
+    "comparison_valid": true,
+    "invalid_reason": "",
+    "single_agent": {
+      "completed": true,
+      "wall_seconds": 68.3,
+      "billable_calls": 11,
+      "input_tokens": 19991,
+      "output_tokens": 1686,
+      "evidence_stored": 2,
+      "evidence_cited": 2,
+      "fabricated_citations": [],
+      "report_chars": 2276,
+      "limitations_declared": 2,
+      "had_review": false
+    },
+    "multi_agent": {
+      "completed": true,
+      "wall_seconds": 208.3,
+      "billable_calls": 40,
+      "input_tokens": 62355,
+      "output_tokens": 13063,
+      "evidence_stored": 4,
+      "evidence_cited": 3,
+      "fabricated_citations": [],
+      "report_chars": 6869,
+      "limitations_declared": 17,
+      "had_review": true,
+      "revisions": 2,
+      "critic_problems": 8
+    },
+    "_wall_seconds": 351.6
   }
 }

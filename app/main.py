@@ -44,7 +44,7 @@ from app import theme  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.graph.workflow import WorkflowSession  # noqa: E402
 from app.schemas.common import AgentId, TaskStatus, WorkflowStatus  # noqa: E402
-from app.services.llm_service import configured_providers  # noqa: E402
+from app.services.llm_service import provider_families  # noqa: E402
 from app.storage.corpus import get_index  # noqa: E402
 from app.storage.evidence_store import EvidenceStore  # noqa: E402
 
@@ -181,7 +181,9 @@ def sidebar() -> None:
 
         st.divider()
         st.markdown("### Providers")
-        for name, present in configured_providers().items():
+        # One row per provider family. Extra keys on the same provider are a capacity measure,
+        # not an operator concern — see provider_families().
+        for name, present in provider_families().items():
             st.markdown(f"{'🟢' if present else '⚪'} {name}")
 
         st.divider()

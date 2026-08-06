@@ -409,5 +409,21 @@ def get_llm(agent_id: str = "system", usage: UsageTracker | None = None) -> LLMS
 
 
 def configured_providers() -> dict[str, bool]:
-    """Provider → whether a key is present. Drives the UI's provider status panel."""
+    """Provider → whether a key is present. One entry per registry entry, siblings included."""
     return {name: bool(os.getenv(cfg.api_key_env)) for name, cfg in PROVIDERS.items()}
+
+
+def provider_families() -> dict[str, bool]:
+    """Provider *family* → whether any of its keys is present.
+
+    `groq2` and `groq3` are additional accounts on the same provider, held only to widen the
+    daily token allowance (quota is per organisation, not per key). That is a capacity detail,
+    not something an operator needs to see, so the status panel shows one row per family. The
+    fallback chain still walks every individual entry — this collapses the display, not the
+    behaviour.
+    """
+    families: dict[str, bool] = {}
+    for name, present in configured_providers().items():
+        family = re.sub(r"\d+$", "", name)
+        families[family] = families.get(family, False) or present
+    return families

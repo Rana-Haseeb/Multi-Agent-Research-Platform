@@ -432,3 +432,39 @@ def test_tool_errors_classify_distinctly():
 
     assert classify_failure(ToolPermissionError("x")) == "tool_permission"
     assert classify_failure(ToolError("x")) == "tool_failure"
+
+
+# --------------------------------------------------------------------------- #
+# Provider status display
+# --------------------------------------------------------------------------- #
+def test_extra_capacity_keys_are_not_shown_as_separate_providers(monkeypatch):
+    """The status panel shows one row per provider, not one per API key.
+
+    groq2/groq3 are additional accounts on the same provider, held only because quota is per
+    organisation. Showing them as three providers misrepresents the architecture to anyone
+    reading the screen.
+    """
+    from app.services.llm_service import configured_providers, provider_families
+
+    for env in ("GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"):
+        monkeypatch.setenv(env, "test-key")
+
+    assert {"groq", "groq2", "groq3"} <= set(configured_providers()), (
+        "the fallback chain must still see every individual key"
+    )
+    families = provider_families()
+    assert "groq2" not in families and "groq3" not in families
+    assert families["groq"] is True
+
+
+def test_a_family_is_live_if_any_of_its_keys_is_present(monkeypatch):
+    """Collapsing must not report a provider as dead because its *first* key is missing."""
+    from app.services.llm_service import provider_families
+
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY_2", "test-key")
+    assert provider_families()["groq"] is True
+
+    for env in ("GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"):
+        monkeypatch.delenv(env, raising=False)
+    assert provider_families()["groq"] is False

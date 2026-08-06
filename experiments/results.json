@@ -4,9 +4,9 @@
       "tasks": 3,
       "repeats": 1,
       "simulated": true,
-      "sequential_median_s": 1.52,
-      "parallel_median_s": 0.51,
-      "speedup": 2.98,
+      "sequential_median_s": 1.54,
+      "parallel_median_s": 0.52,
+      "speedup": 2.96,
       "theoretical_max": 3,
       "evidence_sequential": 0,
       "evidence_parallel": 0,
@@ -16,7 +16,7 @@
     "rows": [
       {
         "parallel": false,
-        "wall_seconds": 1.52,
+        "wall_seconds": 1.54,
         "tasks": 3,
         "tasks_completed": 3,
         "evidence": 0,
@@ -30,7 +30,7 @@
       },
       {
         "parallel": true,
-        "wall_seconds": 0.51,
+        "wall_seconds": 0.52,
         "tasks": 3,
         "tasks_completed": 3,
         "evidence": 0,

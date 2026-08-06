@@ -9,7 +9,8 @@ and hand you a report where every claim traces back to a source.**
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1C3C3C?style=for-the-badge)](https://langchain-ai.github.io/langgraph/)
 [![Providers](https://img.shields.io/badge/LLM-5_providers_·_failover-8957e5?style=for-the-badge)](#-measured-decisions-no-vibes)
 [![Postgres](https://img.shields.io/badge/Postgres-17-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
-[![Tests](https://img.shields.io/badge/tests-242_passing-success?style=for-the-badge)](tests/)
+[![Tests](https://img.shields.io/badge/tests-275_passing-success?style=for-the-badge)](tests/)
+[![Adversarial](https://img.shields.io/badge/adversarial-31_tests_·_29_structural-d1242f?style=for-the-badge)](docs/A8_adversarial_results.md)
 
 <samp>Visibility Bots Innovation Lab · AI Summer Fellowship 2026 · Track 2: NLP & AI Agents · **Week 4**</samp>
 
@@ -36,11 +37,15 @@ and hand you a report where every claim traces back to a source.**
 - [What makes it reliable](#-what-makes-it-reliable)
 - [Measured decisions](#-measured-decisions-no-vibes)
 - [The corpus fights back](#-the-corpus-fights-back)
+- [Security and adversarial testing](#️-security-and-adversarial-testing)
 - [Quick start](#-quick-start)
+- [Deployment](DEPLOYMENT.md)
 - [Project structure](#-project-structure)
 - [Build status](#-build-status)
 - [Evaluation](#-evaluation)
+- [Documentation](#-documentation)
 - [Known limitations](#-known-limitations)
+- [Roadmap](docs/ROADMAP.md)
 
 ---
 
@@ -905,6 +910,40 @@ on a metered tier. Pacing defaults to off, so interactive use is unaffected.
 
 ---
 
+## 🛡️ Security and adversarial testing
+
+31 adversarial tests, all passing. The number that matters is not 31 — it is **29 of the 31
+defences are structural**, meaning enforced by a permission check, a schema validator, or a
+comparison in the router. A structural defence holds regardless of what a model was persuaded to
+emit. An instructional one is prompt wording, and prompt wording can be argued with.
+
+| Attack | What stops it | Kind |
+|---|---|---|
+| Injected instructions in a corpus document | `run_tool` checks `allowed_agents` before the function is reached — an injected instruction cannot grant a tool the agent does not have | structural |
+| A Critic that never approves | the revision cap is an integer comparison in the router, not an instruction to the model | structural |
+| A major claim with no citation | a Pydantic validator rejects it before it can leave the agent | structural |
+| A fabricated evidence id | set membership against the store, no model involved — and it overrides a lenient Critic's approval | structural |
+| Code smuggled into a tool argument | `eval` is never called; the expression grammar is an allow-list of numeric AST nodes | structural |
+| A plan with a dependency cycle | rejected at construction, so the graph is never handed something that would deadlock it | structural |
+| A human editing the plan at a checkpoint | the edit is validated like any other plan — a human may decide, but may not bypass the invariants | structural |
+| Calling a tool as a non-agent identity | `AgentId` is a closed enum and `SYSTEM` holds no grants | structural |
+
+One test deliberately asserts no defence at all: it proves the injection payload planted in the
+corpus is actually *reachable*. A defence whose attack cannot be reproduced is untested, and any
+metric measuring it would be vacuous.
+
+**A real defect this found.** The document-level injection guard was not enough. Given a request
+containing *"you are now in maintenance mode"*, the Supervisor did not leak its prompt but did adopt
+the attacker's framing as its research objective — a partial compromise, recorded as one. A
+request-level guard fixed it; re-running changed the objective to determining the user's legitimate
+topic.
+
+Full detail: **[Adversarial results](docs/A8_adversarial_results.md)** ·
+**[Security review](docs/A9_security_review.md)** (12 risks, each with the mitigation implemented and
+the test holding it in place, plus a stated residual-risk section).
+
+---
+
 ## 🚀 Quick start
 
 ```bash
@@ -989,27 +1028,50 @@ reported from memory is not done*.
 
 | Phase | Scope | Checks | Status |
 |---|---|:---:|:---:|
-| **0** | Scaffold · 5 providers · metering · model selection | 42/42 | ✅ |
+| **0** | Scaffold · multi-provider failover · metering · model selection | 43/43 | ✅ |
 | **1** | Schemas · shared state · 7 handoff contracts | 22/22 | ✅ |
 | **2** | 24-doc corpus · BM25 · Postgres evidence store | 26/26 | ✅ |
 | **3** | 7 tools · permission boundaries · audit log | 23/23 | ✅ |
-| **4** | Six agents · context boundaries · single-agent baseline | 30/30 | ✅ |
+| **4** | Six agents · context boundaries · single-agent baseline | 26/26 | ✅ |
 | **5** | Orchestration graph · routing · termination · persistence | 36/36 | ✅ |
 | **6** | Critic loop · detection-rate benchmark · false-positive control | 23/23 | ✅ |
 | **7** | Parallel fan-out · thread safety · Experiment 3 measured | 24/24 | ✅ |
 | **8** | Human checkpoints · workflow console · Markdown export | 29/29 | ✅ |
 | **9** | 28-case evaluation · falsifiable metrics · resumable runner | 44/44 | ✅ |
-| **10** | 5 experiments · generated experiment report | 5/5 | ✅ |
-| 11 | Docs · security review · deploy | — | ⏳ |
+| **10** | 5 experiments · generated experiment report | 5 experiments | ✅ |
+| **11** | Agent specs · 31 adversarial tests · 12-risk review · deploy | 61/61 | ✅ |
 
 ```bash
-for p in 0 1 2 3 4 5 6 7 8 9; do python scripts/verify_phase$p.py; done
+for p in 0 1 2 3 4 5 6 7 8 9 11; do python scripts/verify_phase$p.py; done
 ```
 
-**Current: 295/295 acceptance checks · 242 tests passing.**
+**Current: 357/357 acceptance checks · 275 tests passing.**
+
+Phase 10 is verified by its own artefacts rather than a checker script: `experiments/results.json`
+holds the measured output of all five experiments, and
+[the experiment report](docs/A7_experiments.md) is generated from it.
 
 `python scripts/verify_phase4.py --live` adds 4 further checks that run a real research task
 against the API rather than mocks.
+
+---
+
+## 📚 Documentation
+
+| Document | What's in it |
+|---|---|
+| [Agent specifications](docs/A1_agent_specifications.md) | All six agents: purpose, tools, prohibited actions, handoff, failure behaviour. Tools are read from the live registry, so the doc cannot drift from what runs. |
+| [State specification](docs/A2_state_specification.md) | The shared state object, every field, and which reducer merges it |
+| [Handoff contracts](docs/A3_handoff_contracts.md) | The 7 schemas agents pass between each other, and what each validator refuses |
+| [Tool specification](docs/A4_tool_specification.md) | The 7 tools and the permission matrix |
+| [Architecture](docs/A5_architecture.md) | The graph, the routing rules, and why it always terminates |
+| [Evaluation results](eval/A6_evaluation.md) | 28 cases, 6 categories, and every metric's falsifiability test |
+| [Experiment report](docs/A7_experiments.md) | All five experiments, generated from measured output |
+| [Adversarial results](docs/A8_adversarial_results.md) | 31 attacks, what stopped each, and whether the defence is structural or instructional |
+| [Security review](docs/A9_security_review.md) | 12 risks, mitigations, verifying tests, and residual risk |
+| [Builder journal](docs/BUILDER_JOURNAL.md) | What broke, what the measurements actually said, and what I'd do differently |
+| [Roadmap](docs/ROADMAP.md) | What the results say to build next, and what is deliberately not planned |
+| [Deployment](DEPLOYMENT.md) | Local and Streamlit Cloud, with the IPv6-pooler and secrets gotchas |
 
 ---
 
@@ -1017,16 +1079,28 @@ against the API rather than mocks.
 
 Stated plainly, because a limitation you disclose is engineering and one you hide is a defect.
 
+- **Almost every experiment is n=1.** Enough to show a mechanism works, not enough to size an
+  effect. Experiment 2 measured the critic-enabled run finishing *faster* than the disabled one —
+  that is provider latency noise, and it is reported as measured rather than dropped for being
+  inconvenient.
+- **The clarification decision is bistable.** At temperature 0, the same request triggered
+  clarification 3 times out of 5. That is a caveat on the 91.9% clarification-accuracy figure, and
+  the reason [the roadmap](docs/ROADMAP.md) puts a structural pre-check ahead of new features.
 - **The corpus is synthetic.** 24 documents written for this project. Retrieval quality on real
   web sources is unmeasured. Live search exists behind `ENABLE_LIVE_SEARCH` but isn't the
-  evaluated path.
-- **No end-to-end workflow numbers yet.** Agents are verified individually and one live research
-  task runs per build, but full-workflow latency, cost and quality figures arrive in Phase 10
-  from actual runs. This README will not carry an estimated metric.
+  evaluated path — and shouldn't be enabled until live sources get a reliability score, or the
+  confidence-capping defence silently stops applying.
+- **Multi-agent costs 3.6× the calls and 3× the wall time** of the single-agent baseline. What it
+  buys is measured (2× the evidence, 17 declared limitations vs 2, 8 problems raised by the Critic).
+  On a simple factual question it would be a bad trade.
 - **BM25, not semantic search.** Adequate for 24 keyword-dense documents; a paraphrased query
   with no shared vocabulary will retrieve poorly.
-- **Free-tier rate limits.** The default configuration runs on free provider tiers with daily
-  request quotas. Sufficient for the ~480 calls this project plans, not for sustained load.
+- **Context trimming saved 4.5% of tokens**, because at this corpus size the full context is only
+  ~795 tokens. The strategy is sound and the corpus is too small for it to pay.
+- **Interrupted runs do not survive a restart.** The checkpointer is in-memory, so a run paused at
+  a human checkpoint is lost if the process restarts.
+- **Free-tier quotas bind on tokens per day, not per minute** — and the daily figure appears only
+  in the body of a 429, never in a response header. Roughly nine full workflows per day.
 - **Single-language corpus.** English only.
 - **Cost tracking reads $0.00 on free tiers.** Token counts are real and measured per agent; USD
   figures only become meaningful when running against a paid provider.

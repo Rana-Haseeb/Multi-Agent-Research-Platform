@@ -14,6 +14,8 @@ Two properties matter and are tested separately:
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from app.graph.nodes import WorkflowDeps, make_finalise, make_intake
@@ -24,7 +26,10 @@ from app.schemas.reports import ErrorRecord, FinalReport, Recommendation, TraceE
 from app.services.usage import UsageTracker
 from app.storage.evidence_store import EvidenceStore
 
-RUN_ID = "test-finalise-node"
+# Unique per process. These tests write to a shared Postgres instance, and a fixed id meant two
+# concurrent runs collided: one test's cleanup DELETEd the rows the other was still asserting on.
+# The failure looked like a persistence bug and was purely test isolation.
+RUN_ID = f"test-finalise-node-{os.getpid()}"
 
 
 def _state() -> dict:

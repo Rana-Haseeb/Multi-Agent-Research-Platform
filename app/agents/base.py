@@ -82,6 +82,16 @@ def classify_failure(exc: Exception) -> str:
 # --------------------------------------------------------------------------- #
 # One structured call
 # --------------------------------------------------------------------------- #
+def _budget_reserve(agent_id: AgentId) -> int:
+    """Calls withheld from this agent so later stages can still run.
+
+    Only the research stage is held back. It is the greedy one — it fans out across sub-questions
+    and loops over tools — and it runs *before* everything that turns evidence into a deliverable.
+    Capping the later stages too would just move the starvation one step down the graph.
+    """
+    return settings.post_research_call_reserve if agent_id is AgentId.RESEARCHER else 0
+
+
 def structured_step(
     *,
     agent_id: AgentId,
@@ -105,7 +115,7 @@ def structured_step(
 
     try:
         if usage:
-            usage.check_budget()
+            usage.check_budget(reserve=_budget_reserve(agent_id))
         output = llm.structured(system, user, schema)
     except Exception as e:  # noqa: BLE001
         elapsed = time.perf_counter() - started
@@ -188,7 +198,7 @@ def tool_loop(
     for iteration in range(max_iterations):
         try:
             if usage:
-                usage.check_budget()
+                usage.check_budget(reserve=_budget_reserve(agent_id))
             messages = trim(messages)
             reply = llm.invoke_tools(messages, schemas)
         except Exception as e:  # noqa: BLE001

@@ -518,3 +518,48 @@ def test_meta_structured_failures_are_not_misread_as_rate_limits():
         "Error code: 429 - Rate limit reached on tokens per minute"))).lower()
     assert "daily token quota" in str(_friendly(Exception(
         "Error code: 429 - Rate limit reached ... on tokens per day (TPD): Limit 100000"))).lower()
+
+
+def test_a9d_research_cannot_starve_the_report_stages():
+    """ATTACK: the greedy stage spends the entire budget before the deliverable is produced.
+
+    DEFENCE (structural): the research stage checks against a reduced cap, so a fixed reserve
+    always survives for the analysis, fact-check, critique and report.
+
+    This is a regression guard for a live failure: researchers spent 52 of a 50-call budget and
+    the Analyst then had nothing left, so a run that had already gathered its evidence produced
+    no analysis and no report at all.
+    """
+    from app.agents.base import _budget_reserve
+    from app.config import settings
+
+    usage = UsageTracker(run_id="starvation")
+    for _ in range(settings.max_agent_calls_per_run + 5):
+        try:
+            usage.check_budget(reserve=_budget_reserve(AgentId.RESEARCHER))
+        except BudgetExceeded:
+            break
+        usage.record(agent_id="researcher", provider="p", model="m", input_tokens=1)
+    else:
+        pytest.fail("research was never capped")
+
+    assert usage.billable_calls <= settings.max_agent_calls_per_run - settings.post_research_call_reserve
+
+    # The property that actually matters: every later stage can still make a call.
+    for agent in (AgentId.ANALYST, AgentId.FACT_CHECKER, AgentId.CRITIC, AgentId.WRITER):
+        usage.check_budget(reserve=_budget_reserve(agent))
+
+
+def test_a9e_the_reserve_does_not_disable_the_global_cap():
+    """ATTACK: use the stage reserve to slip past the global ceiling.
+
+    DEFENCE (structural): the reserve only ever *lowers* the effective cap. A reserve that let a
+    run exceed its ceiling would trade one runaway for another.
+    """
+    from app.config import settings
+
+    usage = UsageTracker(run_id="global-cap")
+    for _ in range(settings.max_agent_calls_per_run):
+        usage.record(agent_id="writer", provider="p", model="m", input_tokens=1)
+    with pytest.raises(BudgetExceeded):
+        usage.check_budget()          # no reserve: the original ceiling still applies

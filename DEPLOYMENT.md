@@ -96,18 +96,35 @@ Only `.env.example` may appear. If `.env` is listed, stop and remove it from his
 2. On [share.streamlit.io](https://share.streamlit.io), create an app pointing at
    `app/main.py` on the `main` branch.
 
-3. Add secrets under **App settings → Secrets**, in TOML form — not as a committed file:
+3. Add secrets under **App settings → Secrets**, in TOML form — not as a committed file. Add
+   every key you have; each one widens the daily allowance and adds a failover hop:
 
 ```toml
-LLM_PROVIDER = "groq"
-LLM_FALLBACK_PROVIDERS = "groq2,groq3,google,openrouter"
-GROQ_API_KEY = "…"
-GOOGLE_API_KEY = "…"
-DATABASE_URL = "postgresql://postgres.<ref>:<password>@aws-1-<region>.pooler.supabase.com:5432/postgres"
+GROQ_API_KEY = "paste-key-1"
+GROQ_API_KEY_2 = "paste-key-2"
+GROQ_API_KEY_3 = "paste-key-3"
+GOOGLE_API_KEY = "paste-key"
+OPENROUTER_API_KEY = "paste-key"
 ```
 
-`app/config.py` reads Streamlit secrets and environment variables both, so no code changes are
-needed between local and cloud.
+That is the whole configuration. Nothing else is required: `LLM_PROVIDER` already defaults to the
+primary backend, and `LLM_FALLBACK_PROVIDERS` defaults to every other registered backend, with
+unconfigured ones filtered out by `provider_chain()`. **Adding a key is sufficient to use it.**
+
+`app/main.py` copies Streamlit secrets into the process environment *before* `app/config.py`
+loads, so the same `os.getenv` path serves local and cloud alike — no code changes between them.
+Every variable in `.env.example` can be set here using the same names.
+
+### Do not deploy with a single key
+
+A one-key deployment was tried and failed mid-run: **216 calls attempted, 164 refused**, the
+budget tripped at 52/50 and the Analyst never produced a result. The free tier's ceiling is tokens
+*per day* and a full workflow costs roughly 100k tokens, so one account cannot finish a run
+reliably once the day's allowance is partly spent.
+
+Quota is per **organisation**, not per key — extra keys only help if they are on different
+accounts. To deliberately disable failover and fail fast instead, set
+`LLM_FALLBACK_PROVIDERS = ""` explicitly.
 
 4. Deploy. First boot builds the BM25 index from `corpus/`, which is committed, so no build step is
    required.

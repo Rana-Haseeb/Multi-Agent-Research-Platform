@@ -9,8 +9,8 @@ and hand you a report where every claim traces back to a source.**
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1C3C3C?style=for-the-badge)](https://langchain-ai.github.io/langgraph/)
 [![Providers](https://img.shields.io/badge/LLM-5_providers_·_failover-8957e5?style=for-the-badge)](#-measured-decisions-no-vibes)
 [![Postgres](https://img.shields.io/badge/Postgres-17-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
-[![Tests](https://img.shields.io/badge/tests-275_passing-success?style=for-the-badge)](tests/)
-[![Adversarial](https://img.shields.io/badge/adversarial-31_tests_·_29_structural-d1242f?style=for-the-badge)](docs/A8_adversarial_results.md)
+[![Tests](https://img.shields.io/badge/tests-279_passing-success?style=for-the-badge)](tests/)
+[![Adversarial](https://img.shields.io/badge/adversarial-33_tests_·_31_structural-d1242f?style=for-the-badge)](docs/A8_adversarial_results.md)
 
 <samp>Visibility Bots Innovation Lab · AI Summer Fellowship 2026 · Track 2: NLP & AI Agents · **Week 4**</samp>
 
@@ -1045,7 +1045,7 @@ reported from memory is not done*.
 for p in 0 1 2 3 4 5 6 7 8 9 11; do python scripts/verify_phase$p.py; done
 ```
 
-**Current: 357/357 acceptance checks · 275 tests passing.**
+**Current: 357/357 acceptance checks · 279 tests passing.**
 
 Phase 10 is verified by its own artefacts rather than a checker script: `experiments/results.json`
 holds the measured output of all five experiments, and

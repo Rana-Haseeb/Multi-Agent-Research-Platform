@@ -413,17 +413,16 @@ def configured_providers() -> dict[str, bool]:
     return {name: bool(os.getenv(cfg.api_key_env)) for name, cfg in PROVIDERS.items()}
 
 
-def provider_families() -> dict[str, bool]:
-    """Provider *family* → whether any of its keys is present.
+def model_backend_status() -> tuple[bool, int]:
+    """(is any backend reachable, how many are configured) — deliberately with no names.
 
-    `groq2` and `groq3` are additional accounts on the same provider, held only to widen the
-    daily token allowance (quota is per organisation, not per key). That is a capacity detail,
-    not something an operator needs to see, so the status panel shows one row per family. The
-    fallback chain still walks every individual entry — this collapses the display, not the
-    behaviour.
+    The console shows a single "AI model" row. Which vendor sits behind it is an implementation
+    detail that does not help an operator and does reveal the account in every screenshot and
+    demo recording. The per-provider list also misrepresented capacity: three keys on one vendor
+    appeared as three providers when they are one, differing only in daily allowance.
+
+    This collapses the *display* only. `provider_chain()` still walks every configured entry, so
+    adding keys widens failover exactly as before.
     """
-    families: dict[str, bool] = {}
-    for name, present in configured_providers().items():
-        family = re.sub(r"\d+$", "", name)
-        families[family] = families.get(family, False) or present
-    return families
+    configured = [name for name, present in configured_providers().items() if present]
+    return bool(configured), len(configured)

@@ -156,22 +156,34 @@ class UsageTracker:
         }
 
     # ------------------------------------------------------------ circuit break
-    def check_budget(self) -> None:
+    def check_budget(self, *, reserve: int = 0) -> None:
         """Raise :class:`BudgetExceeded` if this run has gone past any ceiling.
 
         Held under the lock so concurrent researchers cannot both pass a check that only one of
         them should — the classic check-then-act race, which under a fan-out would let the run
         overshoot its cap by the width of the fan-out.
+
+        ``reserve`` withholds calls from the *current* stage so later stages can still run. A
+        live deployment failed exactly this way: researchers spent 52 of a 50-call budget, and
+        the Analyst then had nothing left, so a run that had already gathered its evidence
+        produced no analysis and no report. Research is the greedy stage — it fans out and loops
+        over tools — so it is the one that must be held back from the last few calls.
         """
         with self._lock:
             billable = sum(1 for c in self.calls if c.ok or c.input_tokens or c.output_tokens)
             attempted = len(self.calls)
-        if billable >= settings.max_agent_calls_per_run:
-            raise BudgetExceeded(
-                f"Run exceeded {settings.max_agent_calls_per_run} model calls "
-                f"({billable} billable of {attempted} attempted). "
-                f"Stopping to prevent a runaway loop."
-            )
+        effective_cap = max(1, settings.max_agent_calls_per_run - max(0, reserve))
+        if billable >= effective_cap:
+            detail = (f"Run exceeded {settings.max_agent_calls_per_run} model calls "
+                      f"({billable} billable of {attempted} attempted). "
+                      f"Stopping to prevent a runaway loop.")
+            if reserve:
+                detail = (f"Research stopped at {billable} of "
+                          f"{settings.max_agent_calls_per_run} model calls, holding {reserve} "
+                          f"back so the analysis and report can still be produced "
+                          f"({attempted} attempted). Increase MAX_AGENT_CALLS_PER_RUN for "
+                          f"broader research.")
+            raise BudgetExceeded(detail)
         if self.elapsed_seconds >= settings.max_run_seconds:
             raise BudgetExceeded(
                 f"Run exceeded {settings.max_run_seconds}s wall clock "

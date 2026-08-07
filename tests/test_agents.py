@@ -435,36 +435,65 @@ def test_tool_errors_classify_distinctly():
 
 
 # --------------------------------------------------------------------------- #
-# Provider status display
+# Model backend status (console display)
 # --------------------------------------------------------------------------- #
-def test_extra_capacity_keys_are_not_shown_as_separate_providers(monkeypatch):
-    """The status panel shows one row per provider, not one per API key.
+def test_console_status_names_no_provider(monkeypatch):
+    """The console shows one anonymous "AI model" row, never a vendor name.
 
-    groq2/groq3 are additional accounts on the same provider, held only because quota is per
-    organisation. Showing them as three providers misrepresents the architecture to anyone
-    reading the screen.
+    Provider identity would otherwise appear in every screenshot and demo recording. It also
+    misrepresented capacity: three keys on one vendor are one provider with a larger daily
+    allowance, not three providers.
     """
-    from app.services.llm_service import configured_providers, provider_families
+    from app.services.llm_service import model_backend_status
 
     for env in ("GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"):
         monkeypatch.setenv(env, "test-key")
 
-    assert {"groq", "groq2", "groq3"} <= set(configured_providers()), (
-        "the fallback chain must still see every individual key"
-    )
-    families = provider_families()
-    assert "groq2" not in families and "groq3" not in families
-    assert families["groq"] is True
+    live, backends = model_backend_status()
+    assert live is True
+    assert isinstance(backends, int) and backends >= 3
+    # The contract is the *absence* of names: the return type cannot carry one.
+    assert not isinstance(backends, str)
 
 
-def test_a_family_is_live_if_any_of_its_keys_is_present(monkeypatch):
-    """Collapsing must not report a provider as dead because its *first* key is missing."""
-    from app.services.llm_service import provider_families
+def test_console_status_reports_nothing_configured(monkeypatch):
+    """A missing key must read as "not configured", not as a silently healthy system."""
+    from app.config import PROVIDERS
+    from app.services.llm_service import model_backend_status
 
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.setenv("GROQ_API_KEY_2", "test-key")
-    assert provider_families()["groq"] is True
+    for cfg in PROVIDERS.values():
+        monkeypatch.delenv(cfg.api_key_env, raising=False)
+    assert model_backend_status() == (False, 0)
 
-    for env in ("GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"):
-        monkeypatch.delenv(env, raising=False)
-    assert provider_families()["groq"] is False
+
+def test_extra_keys_widen_failover_without_extra_configuration(monkeypatch):
+    """Adding a key must be enough on its own.
+
+    A live deployment ran with one key and no fallback list, hit its rate limit and died
+    mid-run — 216 calls attempted, 164 refused. The default chain now covers every registered
+    backend, and provider_chain() filters out the ones with no key.
+    """
+    from app.config import PROVIDERS, Settings
+
+    for cfg in PROVIDERS.values():
+        monkeypatch.delenv(cfg.api_key_env, raising=False)
+    monkeypatch.delenv("LLM_FALLBACK_PROVIDERS", raising=False)
+
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    assert Settings().provider_chain() == ["groq"], "one key means no failover"
+
+    monkeypatch.setenv("GROQ_API_KEY_2", "k")
+    monkeypatch.setenv("GOOGLE_API_KEY", "k")
+    chain = Settings().provider_chain()
+    assert chain[0] == "groq"
+    assert {"groq2", "google"} <= set(chain), "added keys did not widen the chain"
+
+
+def test_failover_can_still_be_disabled_explicitly(monkeypatch):
+    """An explicit empty string must mean fail fast, not fall through to the default."""
+    from app.config import Settings
+
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.setenv("GROQ_API_KEY_2", "k")
+    monkeypatch.setenv("LLM_FALLBACK_PROVIDERS", "")
+    assert Settings().provider_chain() == ["groq"]

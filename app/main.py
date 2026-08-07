@@ -44,7 +44,7 @@ from app import theme  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.graph.workflow import WorkflowSession  # noqa: E402
 from app.schemas.common import AgentId, TaskStatus, WorkflowStatus  # noqa: E402
-from app.services.llm_service import provider_families  # noqa: E402
+from app.services.llm_service import model_backend_status  # noqa: E402
 from app.storage.corpus import get_index  # noqa: E402
 from app.storage.evidence_store import EvidenceStore  # noqa: E402
 
@@ -180,11 +180,18 @@ def sidebar() -> None:
             st.rerun()
 
         st.divider()
-        st.markdown("### Providers")
-        # One row per provider family. Extra keys on the same provider are a capacity measure,
-        # not an operator concern — see provider_families().
-        for name, present in provider_families().items():
-            st.markdown(f"{'🟢' if present else '⚪'} {name}")
+        st.markdown("### AI model")
+        # One anonymous row. Vendor identity is an implementation detail and would otherwise
+        # appear in every screenshot and demo recording — see model_backend_status().
+        live, backends = model_backend_status()
+        if live:
+            st.markdown(f"🟢 Ready · {backends} backend{'s' if backends != 1 else ''}")
+            st.caption("Extra backends widen the daily allowance and provide failover."
+                       if backends > 1 else
+                       "Single backend: a rate limit ends the run instead of failing over.")
+        else:
+            st.markdown("⚪ No model backend configured")
+            st.caption("Set an API key in your environment or deployment secrets.")
 
         st.divider()
         st.markdown("### Budget")

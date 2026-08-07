@@ -173,6 +173,16 @@ PROVIDERS: dict[str, ProviderConfig] = {
 # Both Groq organisations serve the same model ids, so the tiering applies to either.
 GROQ_PROVIDERS = frozenset({"groq", "groq2", "groq3"})
 
+# Every registered backend except the primary, in preference order. This is the *default* for
+# LLM_FALLBACK_PROVIDERS, so simply adding a key to the environment or to deployment secrets
+# widens failover — nothing else has to be configured correctly for it to take effect.
+#
+# The old default was "" (no failover). A live deployment with one key then hit its rate limit
+# and died mid-run: 216 calls attempted, 164 refused, no second backend to move to. Unconfigured
+# names are filtered out by provider_chain(), so listing them all is free.
+# Set LLM_FALLBACK_PROVIDERS="" explicitly to opt out and fail fast.
+DEFAULT_FALLBACK_CHAIN = "groq2,groq3,google,openrouter,xai,openai"
+
 AGENT_MODELS: dict[str, str] = {
     "supervisor":   "openai/gpt-oss-120b",
     "analyst":      "openai/gpt-oss-120b",
@@ -205,7 +215,9 @@ class Settings(BaseModel):
     max_tokens: int = Field(default_factory=lambda: _int("LLM_MAX_TOKENS", 4096))
     fallback_providers: list[str] = Field(
         default_factory=lambda: [
-            p.strip() for p in os.getenv("LLM_FALLBACK_PROVIDERS", "").split(",") if p.strip()
+            p.strip()
+            for p in os.getenv("LLM_FALLBACK_PROVIDERS", DEFAULT_FALLBACK_CHAIN).split(",")
+            if p.strip()
         ]
     )
 
@@ -214,6 +226,12 @@ class Settings(BaseModel):
     max_research_rounds: int = Field(default_factory=lambda: _int("MAX_RESEARCH_ROUNDS", 2))
     max_agent_calls_per_run: int = Field(default_factory=lambda: _int("MAX_AGENT_CALLS_PER_RUN", 50))
     max_parallel_researchers: int = Field(default_factory=lambda: _int("MAX_PARALLEL_RESEARCHERS", 3))
+    # Calls withheld from the research stage so the analysis, fact-check, critique and report can
+    # always run. Sized for the worst case at max_revision_cycles=2: analyst ×3, fact-checker ×3,
+    # critic ×3, writer ×1, plus headroom. Without it, research spends the whole budget and a run
+    # that gathered its evidence still produces nothing — observed in a live deployment.
+    post_research_call_reserve: int = Field(
+        default_factory=lambda: _int("POST_RESEARCH_CALL_RESERVE", 12))
     agent_timeout_seconds: int = Field(default_factory=lambda: _int("AGENT_TIMEOUT_SECONDS", 60))
     max_run_seconds: int = Field(default_factory=lambda: _int("MAX_RUN_SECONDS", 900))
     max_cost_usd_per_run: float = Field(default_factory=lambda: _float("MAX_COST_USD_PER_RUN", 0.50))
